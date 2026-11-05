@@ -1,6 +1,7 @@
 """FastAPI entry point: auth, settings, providers, role models, price table."""
 from contextlib import asynccontextmanager
 
+import os
 import threading
 from pathlib import Path
 
@@ -9,6 +10,9 @@ from pydantic import BaseModel
 
 from . import auth, db, secrets_store
 from .inbox import Conflict, Inbox
+from .notify import Notifier
+from .orchestrator import Orchestrator, check_workspace, default_root, status_table
+from .scheduler import Scheduler, budget_percent_used
 from .providers import pricing, registry
 from .providers.base import ProviderError
 from .runtime import runner as rt
@@ -21,10 +25,34 @@ ROLES = ["orchestrator", "architect", "developer", "tester", "reviewer", "cicd",
          "incident_reporter", "production_support"]
 
 
+JOB_KINDS = {"reminder"}  # more kinds (start a run, resume a lane) arrive with the pipeline milestones
+
+
+def run_job(job: dict) -> None:
+    if job["payload"]["kind"] == "reminder":
+        Inbox().post("status", job["name"], job["payload"].get("text", ""))
+        Notifier().send("reminder", job["name"], job["payload"].get("text", ""), key=f"job:{job['id']}")
+
+
+def scheduler_loop(stop: threading.Event, every: float = 30.0) -> None:
+    """Local background loop: schedules run only while the app is running."""
+    import time as _t
+    while not stop.wait(every):
+        try:
+            st = registry.get_settings()
+            Scheduler(st["pause_at_percent"]).tick(_t.time(), budget_percent_used(st["daily_budget_usd"]), run_job)
+        except Exception:
+            pass  # never let the loop die; failures of single jobs are recorded by tick()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
+    stop = threading.Event()
+    if not os.environ.get("AO_NO_SCHEDULER"):
+        threading.Thread(target=scheduler_loop, args=(stop,), daemon=True).start()
     yield
+    stop.set()
 
 
 def create_app(http_client=None) -> FastAPI:
@@ -209,9 +237,16 @@ def create_app(http_client=None) -> FastAPI:
         role = roles.get(body.role)
         if not role:
             raise HTTPException(404, f"unknown role {body.role}")
-        ws = Path(body.workspace)
-        if not ws.is_dir():
-            raise HTTPException(400, "workspace must be an existing directory")
+        st = registry.get_settings()
+        try:
+            ws = check_workspace(body.workspace, st["workspace_roots"] or [str(default_root())])
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        pct = budget_percent_used(st["daily_budget_usd"])
+        if pct is not None and pct >= 100:
+            Notifier().send("budget_pause", "Daily LLM budget reached",
+                            f"Used {pct:.0f}% of the daily cap; new runs are blocked.", key="budget_pause")
+            raise HTTPException(429, "daily LLM budget reached; new runs are blocked")
         mapping = db.kv_get("role_models", {}).get(body.role)
         if not mapping:
             raise HTTPException(400, f"no model configured for role {body.role}")
@@ -294,6 +329,59 @@ def create_app(http_client=None) -> FastAPI:
     @app.get("/api/audit", dependencies=guard)
     def audit():
         return db.DocRepo("audit").list()
+
+    # ---- orchestrator chat, status, notifications, schedules (M4) ----
+    @app.post("/api/chat", dependencies=guard)
+    def chat(body: ScanIn):
+        mapping = db.kv_get("role_models", {}).get("orchestrator")
+        rec = providers_repo.get(mapping["provider_id"]) if mapping else None
+        if not rec:
+            raise HTTPException(400, "no model configured for the orchestrator role")
+        roles = load_roles(registry.get_settings()["role_dirs"])
+        o = Orchestrator(registry.build(rec, client=app.state.http_client), mapping["model"],
+                         roles["orchestrator"].body if "orchestrator" in roles else "", rec["id"])
+        try:
+            return o.chat(body.text)
+        except ProviderError as e:
+            raise HTTPException(502, secrets_store.redact(f"{e.kind}: {e}"))
+
+    @app.get("/api/chat", dependencies=guard)
+    def chat_history():
+        return [{"role": m["role"], "content": m["content"], "at": m["at"]}
+                for m in db.DocRepo("messages").list() if m.get("chat")]
+
+    @app.get("/api/status", dependencies=guard)
+    def status():
+        names = list(load_roles(registry.get_settings()["role_dirs"]))
+        return status_table(names or ROLES)
+
+    @app.get("/api/notifications", dependencies=guard)
+    def notifications(unread: bool = False):
+        nt = Notifier()
+        return nt.unread() if unread else nt.repo.list()
+
+    @app.post("/api/notifications/{nid}/read", dependencies=guard)
+    def read_notification(nid: str):
+        n = Notifier().mark_read(nid)
+        if not n:
+            raise HTTPException(404, "not found")
+        return n
+
+    class ScheduleIn(BaseModel):
+        name: str
+        payload: dict
+        run_at: float
+        every_s: float | None = None
+
+    @app.get("/api/schedules", dependencies=guard)
+    def list_schedules():
+        return Scheduler().list()
+
+    @app.post("/api/schedules", dependencies=guard)
+    def add_schedule(body: ScheduleIn):
+        if body.payload.get("kind") not in JOB_KINDS:
+            raise HTTPException(400, f"payload.kind must be one of {sorted(JOB_KINDS)}")
+        return Scheduler().add(body.name, body.payload, body.run_at, body.every_s)
 
     return app
 

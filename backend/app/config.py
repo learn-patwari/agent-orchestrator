@@ -24,5 +24,8 @@ DEFAULT_SETTINGS = {
     "decide_with_defaults": False,
     "skill_paths": [str(Path.home() / ".claude" / "skills")],  # precedence: first wins
     "role_dirs": [],
+    "workspace_roots": [],  # empty = only <data>/workspaces
+    "daily_budget_usd": None,  # None = no cap; scheduler pauses at 80%, new runs stop at 100%
+    "pause_at_percent": 80,
     "run_limits": {"max_steps": 30, "max_total_tokens": 500000},
 }
