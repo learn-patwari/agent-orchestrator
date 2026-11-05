@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException, Response
 from pydantic import BaseModel
 
 from . import auth, db, secrets_store
+from .inbox import Conflict, Inbox
 from .providers import pricing, registry
 from .providers.base import ProviderError
 from .runtime import runner as rt
@@ -242,6 +243,57 @@ def create_app(http_client=None) -> FastAPI:
         if not run:
             raise HTTPException(404, "not found")
         return {**run, "log": rt.load_log(rid)}
+
+    # ---- inbox, assumptions, audit (M4) ----
+    def _inbox() -> Inbox:
+        return Inbox(decide_with_defaults=registry.get_settings()["decide_with_defaults"])
+
+    def _inbox_call(fn, *a):
+        try:
+            return fn(*a)
+        except KeyError:
+            raise HTTPException(404, "not found")
+        except Conflict as e:
+            raise HTTPException(409, str(e))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    class AnswerIn(BaseModel):
+        answer: str
+
+    class DecideIn(BaseModel):
+        approve: bool
+
+    class OverruleIn(BaseModel):
+        value: str
+
+    @app.get("/api/inbox", dependencies=guard)
+    def list_inbox(status: str | None = None):
+        return Inbox().list(status)
+
+    @app.post("/api/inbox/{iid}/answer", dependencies=guard)
+    def answer_item(iid: str, body: AnswerIn):
+        return _inbox_call(Inbox().answer, iid, body.answer)
+
+    @app.post("/api/inbox/{iid}/accept-default", dependencies=guard)
+    def accept_default(iid: str):
+        return _inbox_call(Inbox().accept_default, iid)
+
+    @app.post("/api/inbox/{iid}/decide", dependencies=guard)
+    def decide(iid: str, body: DecideIn):
+        return _inbox_call(Inbox().decide, iid, body.approve)
+
+    @app.get("/api/assumptions", dependencies=guard)
+    def list_assumptions():
+        return Inbox().assumptions()
+
+    @app.post("/api/assumptions/{aid}/overrule", dependencies=guard)
+    def overrule(aid: str, body: OverruleIn):
+        return _inbox_call(Inbox().overrule, aid, body.value)
+
+    @app.get("/api/audit", dependencies=guard)
+    def audit():
+        return db.DocRepo("audit").list()
 
     return app
 

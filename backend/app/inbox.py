@@ -23,6 +23,10 @@ class GateBlocked(Exception):
     pass
 
 
+class Conflict(ValueError):
+    """The item is already resolved."""
+
+
 def _audit(event: str, **fields) -> dict:
     return db.DocRepo("audit").create({"event": event, "at": time.time(), **fields})
 
@@ -49,7 +53,7 @@ class Inbox:
         if item is None:
             raise KeyError(item_id)
         if item["status"] != "open":
-            raise ValueError(f"item {item_id} is already {item['status']}")
+            raise Conflict(f"item {item_id} is already {item['status']}")
         return item
 
     def _resolve_default(self, item: dict, by: str) -> dict:
@@ -59,6 +63,8 @@ class Inbox:
 
     def answer(self, item_id: str, answer: str) -> dict:
         item = self._get_open(item_id)
+        if item["kind"] == "approval":
+            raise ValueError("approvals are decided with approve/reject, not answered")
         return self.items.update(item["id"], {"status": "resolved", "answer": answer, "resolved_by": "human"})
 
     def accept_default(self, item_id: str) -> dict:
