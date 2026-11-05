@@ -1,6 +1,6 @@
 # SRS: Agent Orchestrator (standalone web app for a team of AI software-development agents)
 
-Status: Draft (awaiting sign-off)   Owner (human): Akshay (akshaypattu24@gmail.com)   Date: 2026-11-05   Version: 1
+Status: Approved (by the user's instruction to start development, 2026-11-05)   Owner (human): Akshay (akshaypattu24@gmail.com)   Date: 2026-11-05   Version: 1
 
 > Written in BA/SRS mode from `HANDOFF.md` and `reference/`. **D-n** = a requirement the user stated (not up for change without them). **[A]** = a default I chose; the user may overrule it. **Q-n** = an open question, each with a recommended default that is used if you do not answer. Nothing here is implemented. M1 (code) starts only after sign-off in section 11.
 
@@ -248,8 +248,8 @@ Human approval recorded here before development starts (M1 does not begin until 
 
 | Item | Value |
 |---|---|
-| Approved by | |
-| Date | |
-| Decisions D-1..D-11 confirmed | yes / no |
-| Defaults A-1..A-20 and Q-1..Q-11 accepted as written | yes / changes: |
-| Notes / overrules | |
+| Approved by | Akshay (owner), by instruction in chat: "create another branch and develop" |
+| Date | 2026-11-05 |
+| Decisions D-1..D-11 confirmed | yes (implied) |
+| Defaults A-1..A-20 and Q-1..Q-11 accepted as written | yes (implied); overrule any time |
+| Notes / overrules | Sign-off was inferred from the go-ahead to develop, not a line-by-line review. |

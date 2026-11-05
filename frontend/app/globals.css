@@ -1,0 +1,14 @@
+:root { --bg:#fff; --fg:#1a1a1a; --muted:#666; --line:#ddd; --accent:#2457d6; --err:#b00020; }
+@media (prefers-color-scheme: dark) { :root { --bg:#121212; --fg:#eee; --muted:#aaa; --line:#333; --accent:#7aa2ff; --err:#ff6b81; } }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; }
+nav { display:flex; gap:16px; padding:12px 20px; border-bottom:1px solid var(--line); }
+nav a { color:var(--accent); text-decoration:none; }
+main { max-width:860px; margin:0 auto; padding:20px; }
+label { display:block; margin:10px 0 2px; font-weight:600; }
+input, select, button { font:inherit; padding:6px 10px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); }
+button { cursor:pointer; background:var(--accent); color:#fff; border-color:var(--accent); }
+button.secondary { background:transparent; color:var(--fg); border-color:var(--line); }
+.row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:6px 0; }
+.card { border:1px solid var(--line); border-radius:8px; padding:12px; margin:10px 0; }
+.err { color:var(--err); }
+.muted { color:var(--muted); }
