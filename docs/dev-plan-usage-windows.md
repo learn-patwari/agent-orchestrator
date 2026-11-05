@@ -45,20 +45,18 @@ Task sizing rule: **one task = one small, testable, committed slice (target <= 2
 - **Step 0 (first window, before M1):** after sign-off, run a 1-minute dry run of the schedule: create a one-shot task 2 minutes ahead that writes a line to `docs/PROGRESS.md`; confirm it fired. Calibrate: measure how many percent of a window one typical slice costs (percent delta around a small task) and record it in `PROGRESS.md`.
 - Window estimates below are **rough and unmeasured** (Pro plan; limits are shared with the user's other Claude use, which can shrink them). Re-estimate after M1.
 
-| Window(s) | Milestone / content | Cut points (safe stop points) |
-|---|---|---|
-| W1 | M1 Skeleton: repo layout, backend/frontend skeleton, DB models, auth, settings, clean-checkout install | after layout; after models+tests; after auth+settings |
-| W2 | M2 LLM providers: interface, adapters, test-connection, cost table | after interface+fake server; after each adapter |
-| W3-W5 | M3 Agent runtime: role loader, skill registry, tool layer, run loop + resume, compaction | after each of the five parts |
-| W6-W8 | M4 Orchestrator + inbox: chat, gates, assumptions, scheduler with budget-aware resume, notifications | after gates; after scheduler |
-| W9-W10 | M5 BA/Architect flow | after questions flow; after SRS generation |
-| W11-W13 | M6 Dev/Test/Review: worktrees, runs, merge gate into `internal` | after worktrees; after merge gate |
-| W14-W16 | M7 CI/CD, releases, incidents, prod support (can interleave with M8) | after Vercel adapter+quota; after release cutting; after bug loop |
-| W17-W18 | M8 MCP | after client; after Jira example |
-| W19-W20 | M9 Plugin system | after loader/validator; after UI+plugin |
-| W21-W23 | M10 Hardening and docs | after security review; after full-suite run |
+| Window | Milestone / content (lean scope) |
+|---|---|
+| W1 | M1 Skeleton + M2 LLM providers (one OpenAI-compatible adapter first; Anthropic-compatible second if budget allows) |
+| W2-W3 | M3 Agent runtime (role loader, skill registry, sandboxed tools, persisted loop) |
+| W4 | M4 Orchestrator chat, inbox, gates, assumptions (scheduler and notifications in-app only) |
+| W5 | M5 BA/Architect flow (questions, SRS, plan with lanes) |
+| W6-W7 | M6 Dev/Test/Review in worktrees, merge gate into `internal` |
+| W8 | M7 core: quota guard, release cutting with notes preview, bug tracker (Vercel adapter read-only status) |
+| W9 | M8 MCP client (Jira example deferred) + M9 plugin loader with the `software-delivery` plugin |
+| W10 | M10 hardening: security review, full-suite clean-checkout run, docs |
 
-Roughly 20-25 windows. At a few windows per day that is about 1-2 weeks of calendar time if the weekly limit allows; with a Pro weekly cap it is likely to stretch to **3-5 weeks**. Weekly usage is the real constraint to watch, not only the 5-hour window.
+Lean plan: about **10 windows (~2 days of continuous running, ~3-5 calendar days with weekly-limit pauses)**. Cuts that make this possible: parallel lanes (M7/M8/M9 run side by side in separate worktrees), combined small milestones per window, larger slices where tests are cheap, and deferring: Docker sandbox, email/webhook/phone notifications, Jira sync, extra CI/CD adapters, and polish on UI pages. Still unmeasured; re-estimate after W1. The 5-hour window is not the constraint; the **weekly cap** is, and parallel lanes spend it faster.
 
 ## 7. Gates still stay human
 Resuming automatically never skips a gate: SRS sign-off, merge to `main`, production config, credentials and destructive actions wait for the user even when the schedule fires; the checkpoint marks such a task "blocked on user" and the resumed session moves to the next unblocked task or reports and stops.
