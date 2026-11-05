@@ -1,12 +1,19 @@
 """FastAPI entry point: auth, settings, providers, role models, price table."""
 from contextlib import asynccontextmanager
 
+import threading
+from pathlib import Path
+
 from fastapi import Depends, FastAPI, HTTPException, Response
 from pydantic import BaseModel
 
 from . import auth, db, secrets_store
 from .providers import pricing, registry
 from .providers.base import ProviderError
+from .runtime import runner as rt
+from .runtime.roles import load_roles, validate
+from .runtime.skills import SkillRegistry
+from .runtime.tools import ToolBox, Workspace
 
 providers_repo = db.DocRepo("providers")
 ROLES = ["orchestrator", "architect", "developer", "tester", "reviewer", "cicd",
@@ -172,6 +179,69 @@ def create_app(http_client=None) -> FastAPI:
     def scan(body: ScanIn):
         """FR-4: chat UI calls this before sending a message to warn about pasted credentials."""
         return {"looks_like_secret": secrets_store.looks_like_secret(body.text)}
+
+    # ---- skills, roles, runs (M3) ----
+    def _registry() -> SkillRegistry:
+        return SkillRegistry(registry.get_settings()["skill_paths"])
+
+    @app.get("/api/skills", dependencies=guard)
+    def list_skills():
+        return _registry().catalog()
+
+    @app.get("/api/roles", dependencies=guard)
+    def list_roles():
+        known_skills = set(_registry().scan())
+        known_tools = set(ToolBox(Workspace(Path(".")), None).specs)
+        return [{"name": r.name, "description": r.description, "tools": r.tools, "skills": r.skills,
+                 "model": r.model, "source": r.source, "problems": validate(r, known_tools, known_skills)}
+                for r in load_roles(registry.get_settings()["role_dirs"]).values()]
+
+    class RunIn(BaseModel):
+        role: str
+        task: str
+        workspace: str
+        wait: bool = False
+
+    @app.post("/api/runs", dependencies=guard)
+    def start_run(body: RunIn):
+        roles = load_roles(registry.get_settings()["role_dirs"])
+        role = roles.get(body.role)
+        if not role:
+            raise HTTPException(404, f"unknown role {body.role}")
+        ws = Path(body.workspace)
+        if not ws.is_dir():
+            raise HTTPException(400, "workspace must be an existing directory")
+        mapping = db.kv_get("role_models", {}).get(body.role)
+        if not mapping:
+            raise HTTPException(400, f"no model configured for role {body.role}")
+        rec = providers_repo.get(mapping["provider_id"])
+        if not rec:
+            raise HTTPException(400, "provider for this role no longer exists")
+        try:
+            provider = registry.build(rec, client=app.state.http_client)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        reg = _registry()
+        lim = registry.get_settings()["run_limits"]
+        runner = rt.Runner(provider, mapping["model"], role, ToolBox(Workspace(ws), reg), reg,
+                           rt.Limits(max_steps=lim["max_steps"], max_total_tokens=lim["max_total_tokens"]),
+                           provider_id=rec["id"])
+        run = runner.start(body.task, str(ws))
+        if body.wait:
+            return runner.run(run["id"])
+        threading.Thread(target=runner.run, args=(run["id"],), daemon=True).start()
+        return run
+
+    @app.get("/api/runs", dependencies=guard)
+    def list_runs():
+        return rt.runs.list()
+
+    @app.get("/api/runs/{rid}", dependencies=guard)
+    def get_run(rid: str):
+        run = rt.runs.get(rid)
+        if not run:
+            raise HTTPException(404, "not found")
+        return {**run, "log": rt.load_log(rid)}
 
     return app
 
