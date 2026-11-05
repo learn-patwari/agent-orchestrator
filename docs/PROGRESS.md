@@ -10,7 +10,7 @@ Branches: `m1-skeleton` (PR 1), `m3-runtime` (stacked on it). Updated 2026-11-05
 - M3 (backend): role loader (frontmatter + default tool allow-lists, validation), skill registry (ordered paths, progressive load, read-only), tool layer (jailed files, allow-listed shell without a shell, git read/write with never-stage denylist and no push/reset/clean/rebase), run loop persisted per step with resume, untrusted-data wrapping, loop detection, step/token limits, context compaction; API: GET /api/skills, /api/roles, POST/GET /api/runs.
 
 ## Verified
-- Backend: 19 pytest tests pass (mock HTTP transport, no live LLM).
+- Backend: 42 pytest tests pass (mock HTTP transport and a scripted fake provider; no live LLM). The tests caught two real bugs, now fixed: Windows quote handling in the shell tool, and the never-stage denylist not unstaging in a repo with no commits (now uses `git rm --cached`).
 - Frontend: `tsc --noEmit` and `next build` pass.
 - Manual smoke: backend + `next start` run together; setup, cookie auth, settings and the 401 guard work through the Next proxy.
 
