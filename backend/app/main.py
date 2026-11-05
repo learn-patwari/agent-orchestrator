@@ -6,9 +6,12 @@ import threading
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from . import auth, db, secrets_store
+from .ba import BAError
+from .features import Features, NotApproved, features as features_repo, require_approved
 from .inbox import Conflict, Inbox
 from .notify import Notifier
 from .orchestrator import Orchestrator, check_workspace, default_root, status_table
@@ -230,9 +233,15 @@ def create_app(http_client=None) -> FastAPI:
         task: str
         workspace: str
         wait: bool = False
+        feature_id: str | None = None
 
     @app.post("/api/runs", dependencies=guard)
     def start_run(body: RunIn):
+        if body.role == "developer":  # FR-33: no development before the human approved the SRS
+            try:
+                require_approved(body.feature_id)
+            except NotApproved as e:
+                raise HTTPException(409, str(e))
         roles = load_roles(registry.get_settings()["role_dirs"])
         role = roles.get(body.role)
         if not role:
@@ -306,17 +315,21 @@ def create_app(http_client=None) -> FastAPI:
     def list_inbox(status: str | None = None):
         return Inbox().list(status)
 
+    def _synced(item: dict) -> dict:
+        Features(None, "", decide_with_defaults=registry.get_settings()["decide_with_defaults"]).sync(item)
+        return item
+
     @app.post("/api/inbox/{iid}/answer", dependencies=guard)
     def answer_item(iid: str, body: AnswerIn):
-        return _inbox_call(Inbox().answer, iid, body.answer)
+        return _synced(_inbox_call(Inbox().answer, iid, body.answer))
 
     @app.post("/api/inbox/{iid}/accept-default", dependencies=guard)
     def accept_default(iid: str):
-        return _inbox_call(Inbox().accept_default, iid)
+        return _synced(_inbox_call(Inbox().accept_default, iid))
 
     @app.post("/api/inbox/{iid}/decide", dependencies=guard)
     def decide(iid: str, body: DecideIn):
-        return _inbox_call(Inbox().decide, iid, body.approve)
+        return _synced(_inbox_call(Inbox().decide, iid, body.approve))
 
     @app.get("/api/assumptions", dependencies=guard)
     def list_assumptions():
@@ -329,6 +342,59 @@ def create_app(http_client=None) -> FastAPI:
     @app.get("/api/audit", dependencies=guard)
     def audit():
         return db.DocRepo("audit").list()
+
+    # ---- feature intake (M5) ----
+    class FeatureIn(BaseModel):
+        title: str
+        text: str
+
+    def _architect() -> Features:
+        mapping = db.kv_get("role_models", {}).get("architect")
+        rec = providers_repo.get(mapping["provider_id"]) if mapping else None
+        if not rec:
+            raise HTTPException(400, "no model configured for the architect role")
+        return Features(registry.build(rec, client=app.state.http_client), mapping["model"], rec["id"],
+                        registry.get_settings()["decide_with_defaults"])
+
+    def _feature_or_404(fid: str) -> dict:
+        f = features_repo.get(fid)
+        if not f:
+            raise HTTPException(404, "not found")
+        return f
+
+    @app.post("/api/features", dependencies=guard)
+    def create_feature(body: FeatureIn):
+        ft = _architect()
+        try:
+            return ft.intake(body.title, body.text)
+        except (BAError, ProviderError) as e:
+            raise HTTPException(502, secrets_store.redact(f"architect failed: {e}"))
+
+    @app.get("/api/features", dependencies=guard)
+    def list_features():
+        return [{k: v for k, v in f.items() if k not in ("srs_md",)} for f in features_repo.list()]
+
+    @app.get("/api/features/{fid}", dependencies=guard)
+    def get_feature(fid: str):
+        return _feature_or_404(fid)
+
+    @app.get("/api/features/{fid}/srs", dependencies=guard)
+    def get_srs(fid: str):
+        f = _feature_or_404(fid)
+        if not f.get("srs_md"):
+            raise HTTPException(404, "no SRS yet")
+        return PlainTextResponse(f["srs_md"])
+
+    @app.post("/api/features/{fid}/finalize", dependencies=guard)
+    def finalize_feature(fid: str):
+        _feature_or_404(fid)
+        ft = _architect()
+        try:
+            return ft.finalize(fid)
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+        except (BAError, ProviderError) as e:
+            raise HTTPException(502, secrets_store.redact(f"architect failed: {e}"))
 
     # ---- orchestrator chat, status, notifications, schedules (M4) ----
     @app.post("/api/chat", dependencies=guard)

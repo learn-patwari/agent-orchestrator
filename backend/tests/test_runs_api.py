@@ -1,6 +1,11 @@
 import httpx
 
 
+def approved_fid():
+    from app.db import DocRepo
+    return DocRepo("features").create({"title": "f", "status": "approved"})["id"]
+
+
 def completion(text="", tool_calls=None):
     msg = {"content": text or None}
     if tool_calls:
@@ -29,7 +34,7 @@ def test_roles_listing_reports_validation_problems(authed, tmp_path):
 
 def test_run_needs_model_and_workspace(authed, tmp_path):
     pid = setup_role(authed, tmp_path)
-    body = {"role": "developer", "task": "t", "workspace": str(tmp_path), "wait": True}
+    body = {"role": "developer", "task": "t", "workspace": str(tmp_path), "wait": True, "feature_id": approved_fid()}
     assert authed.post("/api/runs", json=body).status_code == 400  # no model for role
     authed.put("/api/role-models/developer", json={"provider_id": pid, "model": "m"})
     assert authed.post("/api/runs", json={**body, "workspace": str(tmp_path / "nope")}).status_code == 400
@@ -48,7 +53,7 @@ def test_run_end_to_end_via_api(authed, tmp_path):
     ])
     authed.upstream.handler = lambda req: next(replies)
     out = authed.post("/api/runs", json={"role": "developer", "task": "make a file", "workspace": str(ws),
-                                         "wait": True}).json()
+                                         "wait": True, "feature_id": approved_fid()}).json()
     assert out["status"] == "done" and (ws / "hello.txt").read_text() == "hi"
     detail = authed.get(f"/api/runs/{out['id']}").json()
     assert [m["role"] for m in detail["log"]] == ["user", "assistant", "tool", "assistant"]
