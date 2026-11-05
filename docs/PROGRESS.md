@@ -1,6 +1,6 @@
 # Progress checkpoint
 
-Branches: `m1-skeleton` (PR 1), `m3-runtime` (PR 2, stacked), `m4-inbox-gates` (PR 3, stacked), `m4-orchestrator` (PR 4, stacked), `m5-ba-flow` (PR 5, stacked), `m6-pipeline` (M6 part 1, stacked on m5-ba-flow). Updated 2026-11-05.
+Branches: `m1-skeleton` (PR 1), `m3-runtime` (PR 2, stacked), `m4-inbox-gates` (PR 3, stacked), `m4-orchestrator` (PR 4, stacked), `m5-ba-flow` (PR 5, stacked), `m6-pipeline` (PR 6, M6 complete except agent wiring, stacked on m5-ba-flow). Updated 2026-11-05.
 
 ## Done
 - M0: SRS (`docs/srs/orchestrator-app.md`), sign-off recorded from the user's instruction to start development.
@@ -14,7 +14,7 @@ Branches: `m1-skeleton` (PR 1), `m3-runtime` (PR 2, stacked), `m4-inbox-gates` (
 - M6 part 1 (tests first, red confirmed per slice): `backend/app/pipeline/`: git worktree manager (one worktree and `task/<name>` branch per task, stacked tasks branch from another task branch, name validation, refuses root inside the repo, refuses removing uncommitted work), merge gate (pure: base = integration branch, latest APPROVE on the CURRENT head via first-line `Verdict:` and second-line `Head:`, no unresolved medium+ findings, CI success, mergeable, tests with counts and none failing, no secret/production-config/reviewer-permission changes, review-round limit escalates; all failing reasons reported together), merge command with `--match-head-commit` and configurable style (never `--admin`), stacked-PR batch planner (base first, orphans and cycles skipped), `gh` client (PR facts, retarget, merge; runner injectable), batch executor (authority switch, never main/master/stage, retarget after base merge, head re-checked right before merge, dependents of a refused PR refused, audit events). Skill `merge-gate` added.
 
 ## Verified
-- Backend: 146 pytest tests pass (mock HTTP transport and a scripted fake provider; no live LLM). The tests caught two real bugs, now fixed: Windows quote handling in the shell tool, and the never-stage denylist not unstaging in a repo with no commits (now uses `git rm --cached`).
+- Backend: 162 pytest tests pass (mock HTTP transport and a scripted fake provider; no live LLM). The tests caught two real bugs, now fixed: Windows quote handling in the shell tool, and the never-stage denylist not unstaging in a repo with no commits (now uses `git rm --cached`).
 - Frontend: `tsc --noEmit` and `next build` pass.
 - Manual smoke: backend + `next start` run together; setup, cookie auth, settings and the 401 guard work through the Next proxy.
 
@@ -30,9 +30,10 @@ Branches: `m1-skeleton` (PR 1), `m3-runtime` (PR 2, stacked), `m4-inbox-gates` (
 
 - M5 gaps: the SRS is assembled from the template in code and the model only supplies analysis and plan JSON (the plan task file lists are the model's guesses, not checked against a repo); SRS is stored in the DB, not yet written into the project's `docs/srs/`; no SRS edit/re-generate/revision UI; UI not opened in a browser; no live LLM so prompt quality is untested.
 
-- M6 remaining: API/settings for the pipeline (`reviewer_can_merge` default OFF, integration/stage/main branch names already in settings), run orchestration (developer in a worktree -> tester -> reviewer verdict, author fixes review comments, review-round counting and escalation to the inbox), recording test counts per PR (`tests_lookup` in GhClient), PR/merge-queue UI, `git push` and PR-creation tool (agents currently cannot push; pushing needs its own gated tool), real `gh` never exercised (only a fake runner), worktree manager not yet wired to runs.
+- M6 slices 3-4 (tests first): dev/test/review state machine per task (developing -> dev_done -> tested -> approved -> merged; failed tests back to developing; REQUEST_CHANGES back to the PR author with round counting; limit escalates to the inbox; HOLD; a review of a stale head is refused), pipeline API (/api/pipeline/tasks, dev-done, tests, review, /merge) using settings `repo_path`, `worktree_root`, `github_repo`, `reviewer_can_merge` (default OFF; merge returns 403 when off or when the integration branch is main/master/stage), Pipeline page (tasks table, merge-approved-batch with refusal reasons).
+- M6 remaining gaps: the pipeline records what happened but nothing yet DRIVES agents through it (a developer/tester/reviewer run is not yet started in the task worktree automatically, and test counts, PR numbers and reviews are posted through the API rather than read from runs); agents cannot push or open PRs (needs a gated tool); real `gh` never run (fake only); the Pipeline page was typechecked and built but not opened in a browser.
 
 ## Next
 1. Live test of both adapters with a real key and base URL.
-2. Finish M6: wire worktrees to runs, pipeline orchestration and review rounds, merge-queue API + UI, `reviewer_can_merge` setting. Then M7.
+2. Wire agents to the pipeline (developer run in the task worktree, tester run that records counts, reviewer run that posts the verdict) and a gated push/PR tool; then M7 (Vercel adapter, quota guard, releases, incidents, bug tracker).
 3. Add frontend tests (vitest, exclude `e2e/`) and a role-models UI.
