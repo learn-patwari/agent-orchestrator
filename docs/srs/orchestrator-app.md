@@ -19,7 +19,8 @@ The user ran a multi-agent development workflow by hand across many Claude Code 
 | D-7 | **Feature intake flow**: BA restates, explains impact, asks questions one at a time with a recommended default, writes an SRS, proposes a phased plan; human approves before any development. |
 | D-8 | The human prefers few questions: decide with the recommended default, record it as `[A]`, let them overrule later. Ask only on risky/irreversible actions (merge to main, production changes, credentials, destructive actions). |
 | D-9 | Reviewer may merge into the integration branch only under the stated merge conditions (section 6.7); never into `main`; revocable setting. |
-| D-10 | Build order is the milestone plan M0 to M10 (section 10), SRS first. |
+| D-10 | **Versioned releases**: every change reaching `stage` carries a SemVer version and humanized release notes so the human can decide whether to merge to `main`; an `internal` branch collects smaller features and fixes first. |
+| D-11 | Build order is the milestone plan M0 to M10 (section 10), SRS first. |
 
 ## 3. Defaults chosen **[A]** (HANDOFF section 12, plus mine)
 | ID | Default |
@@ -42,6 +43,8 @@ The user ran a multi-agent development workflow by hand across many Claude Code 
 | A-16 | Attribution trailers (e.g. `Co-Authored-By`) on commits/PR bodies are a configurable template, off/on per project. |
 | A-17 | Plugin format is our own (section 6.5), but the SKILL.md format is read as-is (Claude-skill compatible); Claude-Code plugins are not imported in MVP. |
 | A-18 | Cost accounting uses a user-editable per-model price table (no live price fetching). |
+| A-19 | Branch flow (names are plugin settings): task branch -> PR -> `internal` (reviewer batch-merges) -> release PR -> `stage` (versioned, deployed, smoke tested) -> `main` (human only). |
+| A-20 | SemVer: major = breaking or data-contract step, minor = new user-visible feature, patch = fixes/docs/internal. Published tags are never rewritten or deleted; fix forward with a new patch. Critical/high bugs may get a hotfix release on their own. |
 
 ## 4. Users and roles
 **Human (the only end user):** gives features, answers questions, approves gates, sets budgets/providers/plugins. **Agent roles** (behaviour from the role files, see `reference/bookmedoc-development/agents/`):
@@ -52,8 +55,8 @@ The user ran a multi-agent development workflow by hand across many Claude Code 
 | Architect (BA mode) | One-question-at-a-time interview with defaults, SRS from template, phased plan with lanes, design notes, risk flags, refactor plans. Stops for SRS approval. | Starts development before approval. |
 | Developer (N) | One task on its own branch/worktree, tests first, PR to integration branch; fixes review comments on its own PR. | Push to integration/main; touch another developer's files; check deployments. |
 | Tester | Unit + e2e tests, repro of failures, verifies incidents and fixes, lint. Raises bugs in the tracker. | Fix product code. |
-| Reviewer | Multi-axis review (correctness, security/tenant isolation, tests, scope, UI); verdict on the first line; batch merge under conditions, head pinned. | Merge to main; merge changes to its own permissions or production config; push code. |
-| CI/CD | Deploys the integration branch, tracks status/logs, read-only smoke per batch, counts platform quota first. | Change production settings/env without human approval. |
+| Reviewer | Multi-axis review (correctness, security/tenant isolation, tests, scope, UI); verdict on the first line; batch merge into `internal` under conditions, head pinned. | Merge to main; merge changes to its own permissions or production config; push code. |
+| CI/CD | Deploys the integration branch, tracks status/logs, read-only smoke per batch, counts platform quota first. **Release mode:** classifies merged PRs, picks the SemVer bump, writes release notes and changelog, opens `internal` -> `stage`, tags, creates the release, deploys, smokes, then recommends on `stage` -> `main`. | Change production settings/env without human approval. |
 | Incident reporter | Analyses failures, has the tester verify, files verified bugs with severity and evidence. | File unverified bugs; touch product code. |
 | Production support | Takes verified bugs: repro, failing test, smallest fix, PR referencing the bug id, asks tester to re-verify; escalates critical/high via the orchestrator. | Refactor; change production config. |
 
@@ -139,6 +142,16 @@ Priority: Must / Should / Could. Acceptance criteria are Given/When/Then, abbrev
 | FR-42 | Built-in bug tracker: statuses open/triaged/in_progress/resolved/closed/reopened/wont_fix; severities low/medium/high/critical; tester role may create/read/comment/patch; evidence attachments. | Must | Given a bug, then only allowed transitions are accepted. |
 | FR-43 | Incident reporter -> tester verifies -> verified bug filed -> production support (repro, failing test, smallest fix, PR with bug id) -> tester re-verifies -> closed. Critical/high escalate immediately via the orchestrator. | Must | Given an unverified incident, then no bug is filed. |
 
+### 6.8a Releases (M6/M7)
+| ID | Requirement | Priority | Acceptance |
+|---|---|---|---|
+| FR-47 | Branch flow task -> `internal` -> `stage` -> `main` with names configurable in plugin settings; only the human merges to `main`. | Must | Given an agent attempting a merge to `main`, then it is blocked and logged. |
+| FR-48 | Release mode (CI/CD role): classify PRs merged since the last tag (feature/fix/docs/internal), suggest the SemVer bump with reasons, write `docs/releases/vX.Y.Z.md` and a `CHANGELOG.md` entry from the release-notes template, open the `internal` -> `stage` release PR. | Must | Given merged PRs, then a bump suggestion and a notes draft appear; a breaking or data-contract change forces major. |
+| FR-49 | UI to preview and edit the notes and override the bump before the release PR is opened. | Must | Given an edited note, then the PR carries the edited text. |
+| FR-50 | After the release PR merges: tag the merge commit, create the GitHub Release, deploy, run one read-only smoke, then open `stage` -> `main` with a MERGE / WAIT / DO NOT MERGE recommendation and a "decide: merge to main?" screen. | Must | Given a smoke failure, then the recommendation is not MERGE and an incident is raised. |
+| FR-51 | Release notes follow the template (one-minute summary, what's new, what was fixed, behind the scenes, **needs your attention** (migrations, env/config, roles/tenant, breaking), how it was checked with counts and an explicit **not verified** list, risk and rollback, included PRs). Test results are taken only from recorded runs, never invented. | Must | Given no recorded test run, then the notes say "not verified", not a count. |
+| FR-52 | Never rewrite or delete a published tag; corrections ship as a new patch. Hotfix releases for critical/high bugs are allowed on their own. | Must | Given a request to move a published tag, then it is refused. |
+
 ### 6.9 MCP and UI
 | ID | Requirement | Priority | Acceptance |
 |---|---|---|---|
@@ -163,7 +176,7 @@ Priority: Must / Should / Could. Acceptance criteria are Given/When/Then, abbrev
 - **Repository layout (proposed for M1):** `backend/`, `frontend/`, `plugins/software-delivery/`, `.development/` (agents, skills, templates), `docs/` (srs, adr, api), `reference/` (kept as read-only source material).
 
 ## 9. New skills: which and when
-Created in `.development/skills/<name>/SKILL.md` per skill-creator conventions, each with a "when to use" description, only when its milestone needs it. All 12 also go into `plugins/software-delivery/skills/` at M9.
+Created in `.development/skills/<name>/SKILL.md` per skill-creator conventions, each with a "when to use" description, only when its milestone needs it. All 14 also go into `plugins/software-delivery/skills/` at M9.
 
 | # | Skill | Needed by | Created in |
 |---|---|---|---|
@@ -179,6 +192,8 @@ Created in `.development/skills/<name>/SKILL.md` per skill-creator conventions, 
 | 10 | `bug-lifecycle` | statuses/severities/owners | M7 |
 | 11 | `mcp-integration` | adding MCP servers | M8 |
 | 12 | `plugin-authoring-orchestrator` | author/validate plugins | M9 |
+| 13 | `semver-release` | bump rules, tags, changelog | M7 (release mode) |
+| 14 | `release-notes-writer` | humanized notes from PRs | M7 (release mode) |
 
 ## 10. Open questions (each with a recommended default; used if unanswered)
 | # | Question | Recommended default | Status |
@@ -192,6 +207,7 @@ Created in `.development/skills/<name>/SKILL.md` per skill-creator conventions, 
 | Q-7 | Default budget caps (per-day cost) and the 80% pause threshold? | No cost cap until you set one; 80% pause threshold on whatever cap exists; require a cap before parallel runs start. | Open, default [A] |
 | Q-8 | Auth for the single user: password or local token? | Local password set on first run, session cookie, localhost only. | Open, default [A] |
 | Q-9 | Keep `reference/` in the repo? | Yes, read-only, excluded from lint/tests; may be trimmed later. | Open, default [A] |
+| Q-11 | Release notes template: reuse the BookMeDoc one generalised (product name as a variable)? | Yes; ship it in the plugin's `templates/RELEASE_NOTES.md`. | Open, default [A] |
 | Q-10 | Should the first plugin be called `software-delivery` and BookMeDoc names stay out of it? | Yes, as in HANDOFF section 8. | Open, default [A] |
 
 No question is blocking for M1 except Q-2 (needed from M2). All others use their defaults.
@@ -221,8 +237,8 @@ Each milestone: tests first, small commits, a short report of what is verified v
 | M3 | Agent runtime | Role loader, skill registry, tool layer (files/shell sandbox/git/gh), run loop with allow-lists, persistence/resume, compaction | Scripted run completes and resumes after kill | after M2; skills `agent-role-authoring`, `context-handoff` |
 | M4 | Orchestrator + inbox | Chat UI, briefing, agent status, gates/approvals, assumptions list, notifications, scheduler with budget-aware resume | Gate blocks until approved; schedule resumes | after M3; skill `orchestrator-runbook` |
 | M5 | BA/Architect flow | Intake UI, one-at-a-time questions, SRS generation/approval, phased plan with lanes | Feature -> approved SRS -> plan end to end | after M4; skills `feature-intake-ba`, `srs-writer`, `phased-plan-lanes` |
-| M6 | Dev/Test/Review pipeline | Worktrees, developer/tester/reviewer runs, verdict parsing, merge gate (batching, head pinning, stacked PRs) | Demo repo: feature built, reviewed, merged to integration | after M5; skill `merge-gate` |
-| M7 | CI/CD + incidents + prod support | Vercel adapter, quota guard, smoke runner, incident reporter, bug tracker, prod support loop, tester re-verify | Simulated failure goes incident -> closed bug | after M6; can parallel with M8 (no shared files if lanes kept); skills `quota-guard`, `bug-lifecycle` |
+| M6 | Dev/Test/Review pipeline | Worktrees, developer/tester/reviewer runs, verdict parsing, merge gate (batching, head pinning, stacked PRs) into `internal`, branch-flow settings (FR-47) | Demo repo: feature built, reviewed, merged to integration | after M5; skill `merge-gate` |
+| M7 | CI/CD + releases + incidents + prod support | Vercel adapter, quota guard, smoke runner, **release cutting (SemVer suggestion, notes generation + edit UI, tag, GitHub Release, merge-to-main decision screen; FR-48..52)**, incident reporter, bug tracker, prod support loop, tester re-verify | Simulated failure goes incident -> closed bug; demo release produces edited notes, tag and a main recommendation | after M6; can parallel with M8 (no shared files if lanes kept); skills `quota-guard`, `bug-lifecycle`, `semver-release`, `release-notes-writer` |
 | M8 | MCP | MCP client (stdio/http), per-role allow-lists, UI, Jira example | Fake MCP server tools visible per role only | after M3; parallel with M7; skill `mcp-integration` |
 | M9 | Plugin system | Loader/validator, install/remove UI, ship `software-delivery` | Fresh install runs the default workflow | after M6; skill `plugin-authoring-orchestrator` |
 | M10 | Hardening | Security review (injection, secrets, sandbox), budgets, observability, docs, cross-milestone tests | Security checklist done, full suite green on clean checkout | last |
@@ -234,6 +250,6 @@ Human approval recorded here before development starts (M1 does not begin until 
 |---|---|
 | Approved by | |
 | Date | |
-| Decisions D-1..D-10 confirmed | yes / no |
-| Defaults A-1..A-18 and Q-1..Q-10 accepted as written | yes / changes: |
+| Decisions D-1..D-11 confirmed | yes / no |
+| Defaults A-1..A-20 and Q-1..Q-11 accepted as written | yes / changes: |
 | Notes / overrules | |

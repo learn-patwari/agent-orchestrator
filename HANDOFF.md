@@ -174,3 +174,15 @@ Environment gotchas (Windows):
 1. Read this file, then `reference/bookmedoc-development/WORKFLOW.md` and the 7 agent files, the SRS template and the example SRS.
 2. Create `docs/srs/orchestrator-app.md` (M0) with decisions, `[A]` assumptions (section 12), open questions with recommended defaults, phased plan (section 10) and a sign-off block. Do not start M1 until the user signs off the SRS.
 3. Keep reports short; state what is verified and what is not.
+
+---
+
+## 14. Addendum (same day): version-based releases and an internal branch
+Requirement from the user, to be part of the app and of the default `software-delivery` plugin: every change that reaches `stage` is **versioned with humanized release notes** so the human can decide whether to merge to `main`, and an **internal branch** collects smaller features and bug fixes.
+- Branches: task branch -> PR -> `internal` (reviewer batch-merges) -> release PR -> `stage` (versioned, deployed, smoke tested) -> `main` (human only). Branch names are plugin settings.
+- SemVer: major = breaking or data-contract step, minor = new user-visible feature, patch = fixes/docs/internal.
+- Release mode (CI/CD role): classify merged PRs, pick the bump, write `docs/releases/vX.Y.Z.md` + `CHANGELOG.md` entry from a release-notes template, open `internal` -> `stage` PR, tag the merge commit, create the GitHub Release, deploy, run one read-only smoke, then open `stage` -> `main` with a MERGE / WAIT / DO NOT MERGE recommendation. The human decides.
+- Release notes are for a decision-maker: one-minute summary, what's new for users, what was fixed, behind the scenes, **needs your attention** (migrations, env/config, roles/tenant changes, breaking), how it was checked with counts and an explicit **not verified** list, risk and rollback, included PRs. Never invent test results.
+- Never rewrite or delete a published tag; fix forward with a new patch version. Hotfix releases for critical/high bugs are allowed on their own.
+- A working example is in `reference/bookmedoc-development/` only after BookMeDoc PR #30 merges; until then see `WORKFLOW.md` section "Release flow" and `templates/RELEASE_NOTES.md` on branch `ap-dev/repo-session-orchestrator-6386a6` of the BookMeDoc repo (copy the current text into your SRS; do not touch that repo). Add the milestone: M6/M7 must include release cutting, notes generation (UI to preview and edit the notes), version bump suggestion, and a "decide: merge to main?" screen.
+- New skills to add to section 7: `release-notes-writer` (humanized notes from PRs) and `semver-release` (bump rules, tags, changelog).
