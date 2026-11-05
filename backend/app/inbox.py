@@ -9,6 +9,7 @@ from __future__ import annotations
 import time
 
 from . import db
+from .notify import Notifier
 
 GATED = {
     "merge_main": "Merge into the main branch",
@@ -38,8 +39,11 @@ class Inbox:
         self.auto = decide_with_defaults
 
     def post(self, kind: str, title: str, body: str = "", **extra) -> dict:
-        return self.items.create({"kind": kind, "title": title, "body": body, "status": "open",
+        item = self.items.create({"kind": kind, "title": title, "body": body, "status": "open",
                                   "created_at": time.time(), **extra})
+        if kind in ("question", "approval"):  # status items never interrupt the human
+            Notifier().send(kind, title, body, key=f"inbox:{item['id']}")
+        return item
 
     def ask(self, title: str, body: str, options: list[str] | None = None, default: str | None = None,
             run_id: str | None = None) -> dict:
