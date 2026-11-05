@@ -14,7 +14,7 @@ from .config import db_path
 TABLES = [
     "users", "projects", "features", "tasks", "agents", "runs", "messages",
     "approvals", "assumptions", "budgets", "providers", "mcp_servers",
-    "plugins", "llm_calls",
+    "plugins", "llm_calls", "inbox", "audit",
 ]
 
 
