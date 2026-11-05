@@ -17,6 +17,7 @@ GATED = {
     "credentials": "Use or provide credentials",
     "destructive_git": "Destructive git operation (force push, reset, branch delete)",
     "delete_data": "Permanently delete data",
+    "srs_approval": "Approve an SRS so development can start",
 }
 
 
