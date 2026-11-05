@@ -12,6 +12,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <strong>Agent Orchestrator</strong>
           <Link href="/">Home</Link>
           <Link href="/chat">Chat</Link>
+          <Link href="/features">Features</Link>
           <Link href="/inbox">Inbox</Link>
           <Link href="/status">Agents</Link>
           <Link href="/providers">Providers</Link>
