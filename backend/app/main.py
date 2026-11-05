@@ -14,6 +14,11 @@ from .ba import BAError
 from .features import Features, NotApproved, features as features_repo, require_approved
 from .inbox import Conflict, Inbox
 from .notify import Notifier
+from .pipeline.flow import Flow, FlowError, tasks as tasks_repo
+from .pipeline.github import GhClient
+from .pipeline.merge_exec import MergeRefused, merge_batch
+from .pipeline.merge_gate import GateConfig
+from .pipeline.worktrees import WorktreeError, WorktreeManager
 from .orchestrator import Orchestrator, check_workspace, default_root, status_table
 from .scheduler import Scheduler, budget_percent_used
 from .providers import pricing, registry
@@ -58,7 +63,7 @@ async def lifespan(app: FastAPI):
     stop.set()
 
 
-def create_app(http_client=None) -> FastAPI:
+def create_app(http_client=None, gh_factory=None) -> FastAPI:
     app = FastAPI(title="Agent Orchestrator", lifespan=lifespan)
     app.state.http_client = http_client  # tests inject a mock transport client
     guard = [Depends(auth.require_auth)]
@@ -342,6 +347,80 @@ def create_app(http_client=None) -> FastAPI:
     @app.get("/api/audit", dependencies=guard)
     def audit():
         return db.DocRepo("audit").list()
+
+    # ---- dev/test/review pipeline and merge queue (M6) ----
+    def _flow() -> Flow:
+        st = registry.get_settings()
+        if not st["repo_path"]:
+            raise HTTPException(400, "set repo_path in settings first")
+        try:
+            from .config import data_dir
+            root = st["worktree_root"] or str(data_dir() / "worktrees")
+            return Flow(WorktreeManager(Path(st["repo_path"]), Path(root)), st["integration_branch"],
+                        st["review_round_limit"])
+        except WorktreeError as e:
+            raise HTTPException(400, str(e))
+
+    def _flow_call(fn, *a, **kw):
+        try:
+            return fn(*a, **kw)
+        except (FlowError, WorktreeError) as e:
+            raise HTTPException(409, str(e))
+
+    class TaskIn(BaseModel):
+        feature_id: str
+        name: str
+        stacked_on: str | None = None
+
+    class DevDoneIn(BaseModel):
+        pr_number: int
+        head_sha: str
+
+    class TestsIn(BaseModel):
+        passed: int
+        failed: int
+        area: str
+
+    class ReviewIn(BaseModel):
+        body: str
+
+    class MergeIn(BaseModel):
+        numbers: list[int]
+
+    @app.get("/api/pipeline/tasks", dependencies=guard)
+    def list_tasks():
+        return tasks_repo.list()
+
+    @app.post("/api/pipeline/tasks", dependencies=guard)
+    def start_task(body: TaskIn):
+        return _flow_call(_flow().start, body.feature_id, body.name, body.stacked_on)
+
+    @app.post("/api/pipeline/tasks/{tid}/dev-done", dependencies=guard)
+    def task_dev_done(tid: str, body: DevDoneIn):
+        return _flow_call(_flow().dev_done, tid, body.pr_number, body.head_sha)
+
+    @app.post("/api/pipeline/tasks/{tid}/tests", dependencies=guard)
+    def task_tests(tid: str, body: TestsIn):
+        return _flow_call(_flow().record_tests, tid, body.passed, body.failed, body.area)
+
+    @app.post("/api/pipeline/tasks/{tid}/review", dependencies=guard)
+    def task_review(tid: str, body: ReviewIn):
+        return _flow_call(_flow().record_review, tid, body.body)
+
+    @app.post("/api/pipeline/merge", dependencies=guard)
+    def merge(body: MergeIn):
+        st = registry.get_settings()
+        flow = _flow()
+        factory = gh_factory or (lambda repo, lookup: GhClient(repo, tests_lookup=lookup))
+        gh = factory(st["github_repo"], flow.tests_for_pr)
+        cfg = GateConfig(integration_branch=st["integration_branch"], review_round_limit=st["review_round_limit"])
+        try:
+            out = merge_batch(gh, body.numbers, cfg, st["merge_style"], st["reviewer_can_merge"])
+        except MergeRefused as e:
+            raise HTTPException(403, str(e))
+        for m in out["merged"]:
+            flow.mark_merged(m["number"])
+        return out
 
     # ---- feature intake (M5) ----
     class FeatureIn(BaseModel):
