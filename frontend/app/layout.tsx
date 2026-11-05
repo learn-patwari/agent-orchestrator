@@ -11,6 +11,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <nav aria-label="Main">
           <strong>Agent Orchestrator</strong>
           <Link href="/">Home</Link>
+          <Link href="/chat">Chat</Link>
+          <Link href="/inbox">Inbox</Link>
+          <Link href="/status">Agents</Link>
           <Link href="/providers">Providers</Link>
           <Link href="/settings">Settings</Link>
         </nav>
