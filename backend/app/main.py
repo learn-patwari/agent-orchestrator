@@ -120,8 +120,8 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
     class ProviderIn(BaseModel):
         name: str
         type: str
-        base_url: str
-        api_key: str
+        base_url: str = ""
+        api_key: str = ""
 
     def _public(rec: dict) -> dict:
         out = {k: v for k, v in rec.items() if k != "api_key_enc"}

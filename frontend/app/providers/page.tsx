@@ -40,6 +40,7 @@ export default function Providers() {
       [id]: r.ok ? `OK (${r.usage.input_tokens}/${r.usage.output_tokens} tokens)` : `Failed: ${r.error_kind}`,
     });
   }
+  const cli = f.type === "claude_cli";
   return (
     <>
       <h1>LLM providers</h1>
@@ -52,24 +53,32 @@ export default function Providers() {
             <option key={t}>{t}</option>
           ))}
         </select>
-        <label htmlFor="u">Base URL</label>
+        <label htmlFor="u">{cli ? "Path to claude.exe (optional)" : "Base URL"}</label>
         <input
           id="u"
           size={40}
-          placeholder="https://api.example.com/v1"
+          placeholder={cli ? "leave empty to find it automatically" : "https://api.example.com/v1"}
           value={f.base_url}
           onChange={(e) => setF({ ...f, base_url: e.target.value })}
-          required
+          required={!cli}
         />
-        <label htmlFor="k">API key</label>
-        <input
-          id="k"
-          type="password"
-          autoComplete="off"
-          value={f.api_key}
-          onChange={(e) => setF({ ...f, api_key: e.target.value })}
-          required
-        />
+        {cli ? (
+          <p className="muted">
+            Uses your own Claude login on this computer, no API key. Models: sonnet, opus, haiku (or a full model name).
+          </p>
+        ) : (
+          <>
+            <label htmlFor="k">API key</label>
+            <input
+              id="k"
+              type="password"
+              autoComplete="off"
+              value={f.api_key}
+              onChange={(e) => setF({ ...f, api_key: e.target.value })}
+              required
+            />
+          </>
+        )}
         <div className="row">
           <button type="submit">Add provider</button>
         </div>
@@ -85,7 +94,7 @@ export default function Providers() {
         <div className="card" key={p.id}>
           <strong>{p.name}</strong>{" "}
           <span className="muted">
-            {p.type} / {p.base_url} / key {p.api_key}
+            {p.type} / {p.base_url || "auto-detect"} / {p.type === "claude_cli" ? "Claude login" : `key ${p.api_key}`}
           </span>
           <div className="row">
             <button className="secondary" disabled={!model} onClick={() => test(p.id)}>

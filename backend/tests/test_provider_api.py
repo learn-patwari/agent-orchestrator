@@ -33,7 +33,7 @@ def test_test_connection_success_and_auth_failure(authed):
 
 
 def test_external_providers_hidden_behind_flag(authed):
-    assert authed.get("/api/providers/types").json()["types"] == ["openai", "anthropic"]
+    assert authed.get("/api/providers/types").json()["types"] == ["openai", "anthropic", "claude_cli"]
     assert add(authed, "external").status_code == 400
     authed.put("/api/settings", json={"feature_flags": {"external_providers": True}})
     assert "external" in authed.get("/api/providers/types").json()["types"]
