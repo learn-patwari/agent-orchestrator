@@ -15,3 +15,6 @@ Open http://localhost:3000, set a password on first run, then add an LLM provide
 
 ## Layout
 `backend/` FastAPI + SQLite repository layer, auth, settings, LLM provider adapters. `frontend/` Next.js UI (proxies `/api` to the backend, `AO_BACKEND_URL`). `docs/` SRS, plans, progress. `reference/` read-only source material from the BookMeDoc workflow.
+
+## Windows desktop app (test build)
+Double-click `run-desktop.cmd` (or run it in a terminal). First run installs Python and Node packages and builds the UI, then opens the app window. Needs Python 3.12 and Node 20+ on PATH (or set `AO_PYTHON`). The app uses ports 8765 (backend) and 3765 (UI); data and logs are under `%APPDATA%\agent-orchestrator-desktop\`. `cd desktop && npm run smoke` starts everything, checks it, and exits. This is a runnable shell, not yet an installer: bundling Python and producing a `.exe` installer is still to do.

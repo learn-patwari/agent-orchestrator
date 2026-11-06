@@ -2,6 +2,9 @@
 import os
 from pathlib import Path
 
+# roles and skills that ship with the app (repo root /.development)
+BUILTIN = Path(__file__).resolve().parents[2] / ".development"
+
 
 def data_dir() -> Path:
     d = Path(os.environ.get("AO_DATA_DIR", Path(__file__).resolve().parents[2] / "data"))
@@ -22,8 +25,8 @@ DEFAULT_SETTINGS = {
     "attribution_trailer": "",  # A-16, empty = off
     "review_round_limit": 3,  # Q-6
     "decide_with_defaults": False,
-    "skill_paths": [str(Path.home() / ".claude" / "skills")],  # precedence: first wins
-    "role_dirs": [],
+    "skill_paths": [str(BUILTIN / "skills"), str(Path.home() / ".claude" / "skills")],  # precedence: first wins
+    "role_dirs": [str(BUILTIN / "roles")],  # built-in roles ship with the app; add folders to override
     "workspace_roots": [],  # empty = only <data>/workspaces
     "daily_budget_usd": None,  # None = no cap; scheduler pauses at 80%, new runs stop at 100%
     "pause_at_percent": 80,

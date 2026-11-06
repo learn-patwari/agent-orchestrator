@@ -7,10 +7,12 @@ from .. import db, secrets_store
 from ..config import DEFAULT_SETTINGS
 from .anthropic_compat import AnthropicCompatProvider
 from .base import LLMProvider
+from .claude_cli import ClaudeCliProvider
 from .openai_compat import OpenAICompatProvider
 from .pricing import cost
 
-ADAPTERS = {"openai": OpenAICompatProvider, "anthropic": AnthropicCompatProvider}
+ADAPTERS = {"openai": OpenAICompatProvider, "anthropic": AnthropicCompatProvider,
+            "claude_cli": ClaudeCliProvider}  # claude_cli: your own Claude login, no API key
 EXTERNAL_TYPE = "external"  # reserved: delegating to another product/CLI/hosted agent
 
 

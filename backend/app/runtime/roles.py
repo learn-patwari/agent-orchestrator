@@ -21,6 +21,8 @@ DEFAULT_TOOLS = {
     "cicd": READ + ["run_shell"],
     "incident-reporter": READ,
     "production-support": READ + ["write_file", "run_shell", "git_write"],
+    "incident_reporter": READ,
+    "production_support": READ + ["write_file", "run_shell", "git_write"],
 }
 
 

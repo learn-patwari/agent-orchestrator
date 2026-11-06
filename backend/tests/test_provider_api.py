@@ -33,7 +33,7 @@ def test_test_connection_success_and_auth_failure(authed):
 
 
 def test_external_providers_hidden_behind_flag(authed):
-    assert authed.get("/api/providers/types").json()["types"] == ["openai", "anthropic"]
+    assert authed.get("/api/providers/types").json()["types"] == ["openai", "anthropic", "claude_cli"]
     assert add(authed, "external").status_code == 400
     authed.put("/api/settings", json={"feature_flags": {"external_providers": True}})
     assert "external" in authed.get("/api/providers/types").json()["types"]
@@ -54,3 +54,17 @@ def test_role_models_and_usage_cost(authed):
     record_call("developer", pid, "m1", Usage(1_000_000, 500_000))
     u = authed.get("/api/usage").json()["by_role"]["developer"]
     assert u["calls"] == 1 and u["cost_usd"] == 4.0
+
+
+def test_unexpected_adapter_crash_is_reported_not_a_500(authed, monkeypatch):
+    from app.providers import registry
+
+    class Boom:
+        def test_connection(self, model):
+            raise RuntimeError("boom sk-secret-abcdefghijkl1234")
+    pid = add(authed).json()["id"]
+    monkeypatch.setattr(registry, "build", lambda rec, client=None: Boom())
+    r = authed.post(f"/api/providers/{pid}/test", json={"model": "m"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is False and "boom" in body["error"] and "sk-secret" not in body["error"]

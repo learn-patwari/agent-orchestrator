@@ -1,0 +1,14 @@
+{
+  "name": "agent-orchestrator-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Windows desktop shell for the Agent Orchestrator (Electron around the FastAPI backend and Next.js UI)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "electron . --smoke"
+  },
+  "devDependencies": {
+    "electron": "33.2.1"
+  }
+}

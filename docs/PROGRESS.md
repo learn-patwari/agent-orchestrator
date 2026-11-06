@@ -54,3 +54,28 @@ Not done in M7: Vercel adapter, release cutting endpoint/UI (tag, GitHub Release
 
 ## Decision 2026-11-06 (user), part 3
 - Agent builder and deployer, Foundry-style, as reusable plugins (SRS D-16). Plan change: pull M9 (plugin system + agent builder UI + export/install) ahead of the rest of M7; Bitbucket, Kubernetes, Windows-release and Vercel become plugins behind interfaces. Not started.
+
+## M11 slice 1 (desktop shell)
+Done: `desktop/` Electron shell (spawns backend + UI, window, per-user data dir, single instance, kills process tree on exit), `run-desktop.cmd`, `build-frontend.cmd`. Verified: `npm run smoke` passes (backend, UI and /api proxy). Not verified: the window itself was not looked at by me. Not done: installer/.exe, bundled Python, icon, auto-update, code signing.
+
+## Provider without an API key (2026-11-06)
+Done: `claude_cli` provider type (app/providers/claude_cli.py): runs `claude -p` with the user's own Claude login, CLI tools off, our tool calls via a JSON protocol (only offered tools accepted), ANTHROPIC_API_KEY removed from the child env, auto-finds the claude.exe bundled with the Claude desktop app. Providers page hides the key field for it. 190 backend tests pass (12 new, red first).
+Verified live: the adapter finds and runs the real claude.exe and reports "not logged in" correctly. NOT verified: a successful real completion or tool call, because that claude.exe needs a one-time `/login` by the user.
+
+## Provider presets (2026-11-06)
+Done: `app/providers/presets.py` + `GET /api/providers/presets`: OpenAI, Anthropic, Claude login, Gemini, Microsoft Foundry/Azure, Mistral, Groq, xAI, DeepSeek, OpenRouter, Together, Fireworks, Perplexity, Cohere, Ollama, LM Studio, Custom (pick protocol + URL + key). Providers page uses a Provider picker. 196 tests pass. NOT verified: no vendor endpoint was called, so each preset URL is from vendor docs as I know them, unchecked live. Not covered: AWS Bedrock, Google Vertex (need signing/OAuth), custom extra headers.
+
+## First user test findings (2026-11-06)
+- Chat said "no model configured for the orchestrator role": the Providers page had no role-model assignment. Added "Models for roles" (use for all roles / per role). Failed connection tests now show the error text. Verified only by typecheck and build; not clicked in a window. The reported "auth error when adding" is unexplained (screen recording could not be viewed); most likely a Claude-login test before /login.
+
+## Self-test in a browser (2026-11-06)
+Ran a separate instance (own data dir, ports 8766/3766) and drove it in the browser pane: setup, Providers page (17 presets, 8 roles), add Claude-login provider, Test connection (now shows the real error), "Use for all roles", Chat. Found and fixed: default OpenAI preset left the URL empty. Result with no Claude login: Test connection and Chat both show "Claude login needed ... /login" (expected). NOT verified: any successful model reply or tool call (needs the user's one-time /login); Pipeline, Features, Inbox, Agents, Settings pages not clicked.
+
+## UI v2 redesign (2026-11-06)
+Reviewed the UI against the Web Interface Guidelines and rebuilt it: design system (tokens, light/dark, focus-visible, reduced motion, tabular numerals), app shell with sidebar (aria-current, skip link, responsive top bar on phones), shared Badge/PageHead/Empty/Alert, Home dashboard with setup checklist, Chat bubbles with Enter-to-send and thinking state, Providers in three steps with per-provider test and delete confirmation, table/empty states on Pipeline/Agents/Inbox/Features, settings cards. Verified: typecheck, build, and looked at Home, Providers and Chat (light, dark, phone width) in a browser. NOT verified: Features, Pipeline, Inbox, Agents, Settings screens visually; keyboard-only walkthrough; contrast audit with a tool.
+
+## Orchestrator knows its team (2026-11-06)
+User's first real chat: the Orchestrator said it could not see any agents. Cause: role_dirs defaulted to empty, so no role files loaded and chat had no team context. Fixed: 8 built-in role files in `.development/roles/` loaded by default (skills dir too), team snapshot (roles, purpose, model, state, inbox, features) added to the Orchestrator's system prompt each turn, `GET /api/team`, `POST /api/team/check` (pings each distinct provider+model once). 204 backend tests pass (7 new, red first). NOT done: Agents page UI for team/check; not verified with a live model.
+
+## First live model run (2026-11-06)
+With the user's Claude login (claude_cli provider) in a separate test instance: Check Agents returned 8 of 8 roles answered (first real model calls in the project), and the Orchestrator, asked about its team, listed all 8 roles with purposes and models and said liveness was unverified until Check agents. Agents page now uses /api/team (description, model, state) with a deliberate Check Agents button. Verified in a browser: Agents page (light), Check flow, chat reply. NOT verified: tool-call round trip with a live model; Features, Pipeline, Inbox, Settings pages visually; dark/phone views of Agents; keyboard and contrast pass. The "UI v2 finish" side session did not start (repository trust needed), so those remain open.

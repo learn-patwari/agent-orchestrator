@@ -19,9 +19,10 @@ from .pipeline.github import GhClient
 from .pipeline.merge_exec import MergeRefused, merge_batch
 from .pipeline.merge_gate import GateConfig
 from .pipeline.worktrees import WorktreeError, WorktreeManager
-from .orchestrator import Orchestrator, check_workspace, default_root, status_table
+from .orchestrator import Orchestrator, check_workspace, default_root, status_table, team_check, team_snapshot
 from .scheduler import Scheduler, budget_percent_used
 from .providers import pricing, registry
+from .providers.presets import PRESETS
 from .providers.base import ProviderError
 from .runtime import runner as rt
 from .runtime.roles import load_roles, validate
@@ -120,13 +121,17 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
     class ProviderIn(BaseModel):
         name: str
         type: str
-        base_url: str
-        api_key: str
+        base_url: str = ""
+        api_key: str = ""
 
     def _public(rec: dict) -> dict:
         out = {k: v for k, v in rec.items() if k != "api_key_enc"}
         out["api_key"] = secrets_store.mask(secrets_store.decrypt(rec["api_key_enc"]))
         return out
+
+    @app.get("/api/providers/presets", dependencies=guard)
+    def provider_presets():
+        return {"presets": PRESETS}
 
     @app.get("/api/providers/types", dependencies=guard)
     def provider_types():
@@ -167,6 +172,8 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             return {"ok": False, "error_kind": e.kind, "error": secrets_store.redact(str(e))}
         except ValueError as e:
             raise HTTPException(400, str(e))
+        except Exception as e:  # never let an adapter crash become a silent 500 in the UI
+            return {"ok": False, "error_kind": "unknown", "error": secrets_store.redact(f"{type(e).__name__}: {e}")}
 
     # ---- per-role models (FR-8) ----
     @app.get("/api/role-models", dependencies=guard)
@@ -476,6 +483,38 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             raise HTTPException(502, secrets_store.redact(f"architect failed: {e}"))
 
     # ---- orchestrator chat, status, notifications, schedules (M4) ----
+    def _team_context(roles: dict) -> str:
+        names = {p["id"]: p["name"] for p in providers_repo.list()}
+        feats = [{"title": f["title"], "status": f["status"]} for f in features_repo.list()]
+        return team_snapshot(roles, db.kv_get("role_models", {}), names, status_table(list(roles) or ROLES),
+                             len(Inbox().list("open")), feats)
+
+    @app.get("/api/team", dependencies=guard)
+    def team():
+        roles = load_roles(registry.get_settings()["role_dirs"])
+        models = db.kv_get("role_models", {})
+        names = {p["id"]: p["name"] for p in providers_repo.list()}
+        state = {r["role"]: r for r in status_table(list(roles) or ROLES)}
+        rows = []
+        for name in (list(roles) or ROLES):
+            m = models.get(name)
+            rows.append({"role": name, "description": roles[name].description if name in roles else "",
+                         "tools": roles[name].tools if name in roles else [],
+                         "model": f"{names.get(m['provider_id'], 'unknown provider')} / {m['model']}" if m else None,
+                         "state": state[name]["state"], "task": state[name]["task"], "steps": state[name]["steps"]})
+        return rows
+
+    @app.post("/api/team/check", dependencies=guard)
+    def team_check_endpoint():
+        roles = load_roles(registry.get_settings()["role_dirs"])
+
+        def build(pid: str):
+            rec = providers_repo.get(pid)
+            if not rec:
+                raise ProviderError("provider was deleted")
+            return registry.build(rec, client=app.state.http_client)
+        return team_check(roles or {r: None for r in ROLES}, db.kv_get("role_models", {}), build)
+
     @app.post("/api/chat", dependencies=guard)
     def chat(body: ScanIn):
         mapping = db.kv_get("role_models", {}).get("orchestrator")
@@ -484,7 +523,8 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             raise HTTPException(400, "no model configured for the orchestrator role")
         roles = load_roles(registry.get_settings()["role_dirs"])
         o = Orchestrator(registry.build(rec, client=app.state.http_client), mapping["model"],
-                         roles["orchestrator"].body if "orchestrator" in roles else "", rec["id"])
+                         roles["orchestrator"].body if "orchestrator" in roles else "", rec["id"],
+                         context=_team_context(roles))
         try:
             return o.chat(body.text)
         except ProviderError as e:

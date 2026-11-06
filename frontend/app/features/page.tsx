@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Alert, Badge, Empty, PageHead } from "../../components/ui";
 import { api } from "../../lib/api";
 
 const STEP: Record<string, string> = {
@@ -59,30 +60,30 @@ export default function Features() {
 
   return (
     <>
-      <h1>Features</h1>
+      <PageHead title="Features" sub="Describe what you want. The architect asks questions, then writes the SRS and a phased plan for you to approve." />
       <form onSubmit={create} className="card">
         <label htmlFor="ft">Title</label>
-        <input id="ft" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} required />
+        <input id="ft" name="title" autoComplete="off" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} required />
         <label htmlFor="fx">What do you want?</label>
-        <textarea id="fx" rows={4} style={{ width: "100%" }} value={f.text} onChange={(e) => setF({ ...f, text: e.target.value })} required />
+        <textarea id="fx" name="text" autoComplete="off" rows={5} placeholder="e.g. Let patients book, move and cancel appointments online…" value={f.text} onChange={(e) => setF({ ...f, text: e.target.value })} required />
         <div className="row">
           <button type="submit" disabled={busy}>
-            {busy ? "Analysing..." : "Hand to the architect"}
+            {busy ? "Analysing…" : "Hand to the Architect"}
           </button>
         </div>
       </form>
-      {err && (
-        <p className="err" role="alert">
-          {err}
-        </p>
+      {err && <Alert>{err}</Alert>}
+      {list.length === 0 ? (
+        <Empty title="No features yet">Your first feature will appear here once you hand it to the architect.</Empty>
+      ) : (
+        <div className="row" role="list" aria-label="Features">
+          {list.map((x) => (
+            <button key={x.id} role="listitem" className="secondary" aria-pressed={sel?.id === x.id} onClick={() => load(x.id)}>
+              {x.title} <Badge status={x.status} />
+            </button>
+          ))}
+        </div>
       )}
-      <div className="row">
-        {list.map((x) => (
-          <button key={x.id} className="secondary" onClick={() => load(x.id)}>
-            {x.title} <span className="muted">({x.status})</span>
-          </button>
-        ))}
-      </div>
       {sel && (
         <div className="card">
           <h2>{sel.title}</h2>
@@ -111,7 +112,7 @@ export default function Features() {
           </ul>
           {sel.status === "ready" && (
             <button disabled={busy} onClick={async () => { await run(() => api(`/features/${sel.id}/finalize`, "POST")); await load(sel.id); }}>
-              {busy ? "Writing SRS..." : "Generate SRS and plan"}
+              {busy ? "Writing SRS…" : "Generate SRS and Plan"}
             </button>
           )}
           {sel.plan && (
