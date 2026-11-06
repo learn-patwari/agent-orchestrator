@@ -50,7 +50,7 @@ def _from_doc(d: dict) -> Message:
 
 
 def load_log(run_id: str) -> list[dict]:
-    return sorted((m for m in messages.list() if m["run_id"] == run_id), key=lambda m: m["seq"])
+    return sorted((m for m in messages.list() if m.get("run_id") == run_id), key=lambda m: m["seq"])
 
 
 def system_prompt(role: Role, skills: SkillRegistry | None) -> str:
