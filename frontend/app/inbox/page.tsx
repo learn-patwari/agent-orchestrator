@@ -63,6 +63,9 @@ export default function Inbox() {
                 name="answer" autoComplete="off" placeholder="Or type your own answer…" style={{ flex: "1 1 220px" }}
                 value={answers[i.id] ?? ""}
                 onChange={(e) => setAnswers({ ...answers, [i.id]: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && answers[i.id]?.trim()) act(`/inbox/${i.id}/answer`, { answer: answers[i.id] });
+                }}
               />
               <button className="secondary" disabled={!answers[i.id]} onClick={() => act(`/inbox/${i.id}/answer`, { answer: answers[i.id] })}>
                 Answer
@@ -83,6 +86,9 @@ export default function Inbox() {
                 aria-label={`Overrule ${a.question}`}
                 value={answers[a.id] ?? ""}
                 onChange={(e) => setAnswers({ ...answers, [a.id]: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && answers[a.id]?.trim()) act(`/assumptions/${a.id}/overrule`, { value: answers[a.id] });
+                }}
                 name="overrule" autoComplete="off" placeholder="New value…" style={{ flex: "1 1 220px" }}
               />
               <button className="secondary" disabled={!answers[a.id]} onClick={() => act(`/assumptions/${a.id}/overrule`, { value: answers[a.id] })}>

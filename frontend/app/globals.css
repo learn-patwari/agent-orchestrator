@@ -1,7 +1,7 @@
 /* Agent Orchestrator v2 design system: tokens, app shell, components. Light and dark follow the OS. */
 :root {
   color-scheme: light dark;
-  --bg: #f6f7fb; --surface: #ffffff; --surface-2: #eff1f7; --fg: #14161c; --muted: #576070; --line: #e0e4ed;
+  --bg: #f6f7fb; --surface: #ffffff; --surface-2: #eff1f7; --fg: #14161c; --muted: #576070; --line: #e0e4ed; --field-line: #7a8396;
   --accent: #4338ca; --accent-hover: #3730a3; --accent-fg: #ffffff; --accent-soft: #ecebfd;
   --ok: #0a7a4b; --ok-soft: #e1f5ea; --warn: #8a5a00; --warn-soft: #fcefd3; --err: #b3261e; --err-soft: #fde8e6;
   --info: #1a5fb4; --info-soft: #e3eefb;
@@ -10,7 +10,7 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0d0f14; --surface: #151821; --surface-2: #1c202b; --fg: #e9ebf1; --muted: #9ba4b5; --line: #272c39;
+    --bg: #0d0f14; --surface: #151821; --surface-2: #1c202b; --fg: #e9ebf1; --muted: #9ba4b5; --line: #272c39; --field-line: #6c7690;
     --accent: #9a95ff; --accent-hover: #b4b0ff; --accent-fg: #0d0f14; --accent-soft: #23223f;
     --ok: #4ade80; --ok-soft: #12291d; --warn: #fbbf24; --warn-soft: #2b2310; --err: #ff8a80; --err-soft: #331614;
     --info: #7db8ff; --info-soft: #13253d; --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -43,17 +43,17 @@ a { color: var(--accent); text-underline-offset: 3px; }
 main { flex: 1; min-width: 0; padding: 32px clamp(16px, 4vw, 48px) 64px; max-width: 1100px; margin: 0 auto; width: 100%; }
 main:focus { outline: none; }
 .page-head { margin-bottom: 22px; }
-.page-head p { color: var(--muted); margin: 0; }
+.page-head p { color: var(--muted); margin: 0 0 8px; }
 
 /* ---- controls ---- */
 label { display: block; margin: 14px 0 5px; font-weight: 600; font-size: 0.9rem; }
 input, select, textarea, button { font: inherit; }
-input:not([type="checkbox"]), select, textarea { width: 100%; max-width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); color: var(--fg); transition: border-color 0.12s, box-shadow 0.12s; }
+input:not([type="checkbox"]), select, textarea { width: 100%; max-width: 100%; padding: 9px 12px; border: 1px solid var(--field-line); border-radius: var(--radius-sm); background: var(--surface); color: var(--fg); transition: border-color 0.12s, box-shadow 0.12s; }
 input[size] { width: auto; }
 input:not([type="checkbox"]):hover, select:hover, textarea:hover { border-color: var(--muted); }
 input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); vertical-align: middle; }
-input::placeholder, textarea::placeholder { color: var(--muted); opacity: 0.8; }
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 button, .btn { display: inline-block; text-align: center; text-decoration: none; cursor: pointer; padding: 9px 16px; border-radius: var(--radius-sm); border: 1px solid var(--accent); background: var(--accent); color: var(--accent-fg); font-weight: 600; touch-action: manipulation; transition: background-color 0.12s, border-color 0.12s, transform 0.08s; }
 button:hover:not(:disabled), .btn:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 button:active:not(:disabled) { transform: translateY(1px); }
@@ -68,7 +68,7 @@ button.small { padding: 5px 11px; font-size: 0.85rem; }
 .field-note { color: var(--muted); font-size: 0.85rem; margin: 6px 0 0; }
 
 /* ---- surfaces ---- */
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; margin: 12px 0; box-shadow: var(--shadow); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; margin: 12px 0; overflow-wrap: break-word; box-shadow: var(--shadow); }
 .card h2:first-child, .card h3:first-child { margin-top: 0; }
 .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 .grid .card { margin: 0; }
@@ -93,10 +93,12 @@ button.small { padding: 5px 11px; font-size: 0.85rem; }
 .badge.warn { background: var(--warn-soft); color: var(--warn); }
 .badge.err { background: var(--err-soft); color: var(--err); }
 .badge.info { background: var(--info-soft); color: var(--info); }
-.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-th { text-align: left; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; background: var(--surface-2); }
-th, td { padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; overflow-wrap: anywhere; }
+.table-wrap { position: relative; overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+table { width: 100%; min-width: 560px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; white-space: nowrap; background: var(--surface-2); }
+th, td { padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; overflow-wrap: break-word; }
+td:first-child { max-width: 28ch; overflow-wrap: anywhere; }
+td.nowrap { white-space: nowrap; max-width: none; }
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr:hover { background: var(--surface-2); }
 
@@ -126,3 +128,9 @@ tbody tr:hover { background: var(--surface-2); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
+
+/* ---- selectable chips (feature list) ---- */
+.chips { list-style: none; margin: 16px 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.chips li { min-width: 0; }
+button.chip { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; text-align: left; overflow-wrap: anywhere; }
+button.chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft, var(--surface-2)); }

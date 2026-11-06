@@ -76,7 +76,7 @@ export default function Chat() {
         <textarea
           id="msg" name="message" rows={1} value={text} onChange={(e) => setText(e.target.value)} autoComplete="off"
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               send();
             }
