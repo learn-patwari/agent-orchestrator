@@ -42,3 +42,7 @@ Branches: `m1-skeleton` (PR 1), `m3-runtime` (PR 2, stacked), `m4-inbox-gates` (
 ## M7 slice 2 (release helpers)
 Done: `app/releases.py` (suggest_bump, next_version, generate_notes), skills semver-release and release-notes-writer. 179 backend tests pass (7 new, red first).
 Not done in M7: Vercel adapter, release cutting endpoint/UI (tag, GitHub Release, merge-to-main decision), smoke runner, bug tracker, incident reporter, production support, bug-lifecycle skill.
+
+## Decisions 2026-11-06 (user)
+- Targets: web apps AND Windows apps (SRS D-12). M7 CI/CD adapter gets a Windows package/release kind next to Vercel; quota guard stays generic.
+- Orchestrator ships as a Windows desktop app (SRS D-13): Electron shell proposed, Python backend as sidecar, new milestone M11. Not started.

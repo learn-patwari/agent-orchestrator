@@ -21,6 +21,8 @@ The user ran a multi-agent development workflow by hand across many Claude Code 
 | D-9 | Reviewer may merge into the integration branch only under the stated merge conditions (section 6.7); never into `main`; revocable setting. |
 | D-10 | **Versioned releases**: every change reaching `stage` carries a SemVer version and humanized release notes so the human can decide whether to merge to `main`; an `internal` branch collects smaller features and fixes first. |
 | D-11 | Build order is the milestone plan M0 to M10 (section 10), SRS first. |
+| D-12 | Target projects the agents build and deploy are both web apps and Windows applications (user, 2026-11-06). The CI/CD adapter interface gets two kinds: web deploy (Vercel first) and Windows package/release (build, installer or zip, GitHub Release asset). |
+| D-13 | The orchestrator itself ships as a Windows desktop app (user, 2026-11-06): the existing FastAPI backend and Next.js UI wrapped in an Electron shell (proposed; Tauri is the alternative), backend bundled as a sidecar process, per-user data under %APPDATA%, installer via electron-builder. Added as milestone M11 after M10. |
 
 ## 3. Defaults chosen **[A]** (HANDOFF section 12, plus mine)
 | ID | Default |
