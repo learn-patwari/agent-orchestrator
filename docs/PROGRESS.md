@@ -54,3 +54,6 @@ Not done in M7: Vercel adapter, release cutting endpoint/UI (tag, GitHub Release
 
 ## Decision 2026-11-06 (user), part 3
 - Agent builder and deployer, Foundry-style, as reusable plugins (SRS D-16). Plan change: pull M9 (plugin system + agent builder UI + export/install) ahead of the rest of M7; Bitbucket, Kubernetes, Windows-release and Vercel become plugins behind interfaces. Not started.
+
+## M11 slice 1 (desktop shell)
+Done: `desktop/` Electron shell (spawns backend + UI, window, per-user data dir, single instance, kills process tree on exit), `run-desktop.cmd`, `build-frontend.cmd`. Verified: `npm run smoke` passes (backend, UI and /api proxy). Not verified: the window itself was not looked at by me. Not done: installer/.exe, bundled Python, icon, auto-update, code signing.
