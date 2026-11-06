@@ -22,6 +22,8 @@ The user ran a multi-agent development workflow by hand across many Claude Code 
 | D-10 | **Versioned releases**: every change reaching `stage` carries a SemVer version and humanized release notes so the human can decide whether to merge to `main`; an `internal` branch collects smaller features and fixes first. |
 | D-11 | Build order is the milestone plan M0 to M10 (section 10), SRS first. |
 | D-12 | Target projects the agents build and deploy are both web apps and Windows applications (user, 2026-11-06). The CI/CD adapter interface gets two kinds: web deploy (Vercel first) and Windows package/release (build, installer or zip, GitHub Release asset). |
+| D-14 | Code host is pluggable: a Git-host interface (PR facts, retarget, merge, comments) with the existing `gh` client as one adapter and a Bitbucket Server / Data Center adapter (self-hosted, REST API 1.0, HTTP access token stored via the secrets store) as a second (user, 2026-11-06). The merge gate stays host-neutral; on Bitbucket the reviewer verdict can use native approve / needs-work as well as the first-line convention. |
+| D-15 | A Kubernetes deploy adapter is added next to Vercel and Windows release (user, 2026-11-06): deploy via kubectl/manifests or Helm against a configured cluster/namespace; production-config and credential changes stay GATED. Whether reviewer/deployer agents themselves also run as Kubernetes jobs is open (see Q-12). |
 | D-13 | The orchestrator itself ships as a Windows desktop app (user, 2026-11-06): the existing FastAPI backend and Next.js UI wrapped in an Electron shell (proposed; Tauri is the alternative), backend bundled as a sidecar process, per-user data under %APPDATA%, installer via electron-builder. Added as milestone M11 after M10. |
 
 ## 3. Defaults chosen **[A]** (HANDOFF section 12, plus mine)
@@ -210,6 +212,7 @@ Created in `.development/skills/<name>/SKILL.md` per skill-creator conventions, 
 | Q-8 | Auth for the single user: password or local token? | Local password set on first run, session cookie, localhost only. | Open, default [A] |
 | Q-9 | Keep `reference/` in the repo? | Yes, read-only, excluded from lint/tests; may be trimmed later. | Open, default [A] |
 | Q-11 | Release notes template: reuse the BookMeDoc one generalised (product name as a variable)? | Yes; ship it in the plugin's `templates/RELEASE_NOTES.md`. | Open, default [A] |
+| Q-12 | Kubernetes: is it only a deploy target, or should reviewer/deployer agents also run as Kubernetes jobs? | Deploy target only for now; agents stay local processes. | Open, default [A] |
 | Q-10 | Should the first plugin be called `software-delivery` and BookMeDoc names stay out of it? | Yes, as in HANDOFF section 8. | Open, default [A] |
 
 No question is blocking for M1 except Q-2 (needed from M2). All others use their defaults.

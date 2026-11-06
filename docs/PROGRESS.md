@@ -46,3 +46,8 @@ Not done in M7: Vercel adapter, release cutting endpoint/UI (tag, GitHub Release
 ## Decisions 2026-11-06 (user)
 - Targets: web apps AND Windows apps (SRS D-12). M7 CI/CD adapter gets a Windows package/release kind next to Vercel; quota guard stays generic.
 - Orchestrator ships as a Windows desktop app (SRS D-13): Electron shell proposed, Python backend as sidecar, new milestone M11. Not started.
+
+## Decisions 2026-11-06 (user), part 2
+- Code host: Bitbucket Server/Data Center, self-hosted (SRS D-14). Needs a Git-host interface; gh stays one adapter. Not started.
+- Kubernetes deploy adapter (D-15). Open Q-12: deploy target only, or agents also run as k8s jobs (default: target only).
+- Needs from user to build the Bitbucket adapter: base URL, project/repo key, auth type (HTTP access token assumed), whether Bitbucket approvals should count.
