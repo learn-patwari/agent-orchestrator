@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { Alert, Badge, Empty, PageHead } from "../../components/ui";
 import { api } from "../../lib/api";
 
 export default function Pipeline() {
@@ -46,10 +47,11 @@ export default function Pipeline() {
   const ready = tasks.filter((t) => t.status === "approved" && t.pr_number);
   return (
     <>
-      <h1>Pipeline</h1>
+      <PageHead title="Pipeline" sub="Each task runs in its own git worktree, then goes dev → test → review → merge." />
       <form onSubmit={start} className="card">
+        <h2>New task</h2>
         <label htmlFor="pf">Approved feature</label>
-        <select id="pf" value={f.feature_id} onChange={(e) => setF({ ...f, feature_id: e.target.value })} required>
+        <select id="pf" name="feature" value={f.feature_id} onChange={(e) => setF({ ...f, feature_id: e.target.value })} required>
           <option value="">choose...</option>
           {features.map((x) => (
             <option key={x.id} value={x.id}>
@@ -58,50 +60,52 @@ export default function Pipeline() {
           ))}
         </select>
         <label htmlFor="pn">Task name</label>
-        <input id="pn" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} pattern="[A-Za-z0-9][A-Za-z0-9._-]*" required />
+        <input id="pn" name="task_name" autoComplete="off" spellCheck={false} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} pattern="[A-Za-z0-9][A-Za-z0-9._-]*" required />
         <div className="row">
-          <button type="submit">Create task worktree</button>
+          <button type="submit">Create Task Worktree</button>
         </div>
       </form>
-      {err && (
-        <p className="err" role="alert">
-          {err}
-        </p>
-      )}
+      {err && <Alert>{err}</Alert>}
       <h2>Tasks</h2>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr>
-            <th align="left">Task</th>
-            <th align="left">Branch</th>
-            <th align="left">State</th>
-            <th align="left">PR</th>
-            <th align="left">Tests</th>
-            <th align="left">Rounds</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tasks.map((t) => (
-            <tr key={t.id}>
-              <td>{t.name}</td>
-              <td>{t.branch}</td>
-              <td>{t.status}</td>
-              <td>{t.pr_number ?? "-"}</td>
-              <td>{t.tests ? `${t.tests.passed} pass / ${t.tests.failed} fail` : "-"}</td>
-              <td>{t.rounds}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {tasks.length === 0 ? (
+        <Empty title="No tasks yet">Pick an approved feature above and create the first task worktree.</Empty>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Task</th>
+                <th scope="col">Branch</th>
+                <th scope="col">State</th>
+                <th scope="col">PR</th>
+                <th scope="col">Tests</th>
+                <th scope="col">Rounds</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tasks.map((t) => (
+                <tr key={t.id}>
+                  <td><strong>{t.name}</strong></td>
+                  <td><code>{t.branch}</code></td>
+                  <td><Badge status={t.status} /></td>
+                  <td>{t.pr_number ? `#${t.pr_number}` : "–"}</td>
+                  <td>{t.tests ? `${t.tests.passed} pass / ${t.tests.failed} fail` : "–"}</td>
+                  <td>{t.rounds}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <h2>Merge queue</h2>
       <p className="muted">
         Approved PRs ({ready.length}) merge into the integration branch only if the merge gate passes. Merging into main stays with you.
       </p>
       <button disabled={ready.length === 0} onClick={mergeApproved}>
-        Merge approved batch
+        Merge Approved Batch
       </button>
       {result && (
-        <div className="card">
+        <div className="card" role="status">
           <strong>Merged:</strong> {result.merged.map((m: any) => `#${m.number}`).join(", ") || "none"}
           {result.refused.map((r: any) => (
             <p key={r.number} className="err">

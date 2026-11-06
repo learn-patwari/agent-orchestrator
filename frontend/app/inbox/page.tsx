@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { Alert, Badge, Empty, PageHead } from "../../components/ui";
 import { api } from "../../lib/api";
 
 export default function Inbox() {
@@ -34,17 +35,13 @@ export default function Inbox() {
 
   return (
     <>
-      <h1>Inbox</h1>
-      {err && (
-        <p className="err" role="alert">
-          {err}
-        </p>
-      )}
+      <PageHead title="Inbox" sub="Everything that needs a decision from you, in one place." />
+      {err && <Alert>{err}</Alert>}
       <h2>Needs you ({items.length})</h2>
-      {items.length === 0 && <p className="muted">Nothing is waiting for you.</p>}
+      {items.length === 0 && <Empty title="All clear">Nothing is waiting for you.</Empty>}
       {items.map((i) => (
         <div className="card" key={i.id}>
-          <strong>{i.title}</strong> <span className="muted">{i.kind}</span>
+          <strong>{i.title}</strong> <Badge status={i.kind} tone={i.kind === "approval" ? "warn" : "info"} />
           <p>{i.body}</p>
           {i.kind === "approval" ? (
             <div className="row">
@@ -63,6 +60,7 @@ export default function Inbox() {
               ))}
               <input
                 aria-label={`Answer for ${i.title}`}
+                name="answer" autoComplete="off" placeholder="Or type your own answer…" style={{ flex: "1 1 220px" }}
                 value={answers[i.id] ?? ""}
                 onChange={(e) => setAnswers({ ...answers, [i.id]: e.target.value })}
               />
@@ -74,6 +72,7 @@ export default function Inbox() {
         </div>
       ))}
       <h2>Assumptions to review ({assumptions.filter((a) => a.status === "assumed").length})</h2>
+      {assumptions.length === 0 && <Empty title="No assumptions">Defaults the agents assumed on your behalf will be listed here.</Empty>}
       {assumptions.map((a) => (
         <div className="card" key={a.id}>
           <strong>[A]</strong> {a.question}: <em>{a.assumed}</em> <span className="muted">({a.status}, {a.source})</span>
@@ -84,7 +83,7 @@ export default function Inbox() {
                 aria-label={`Overrule ${a.question}`}
                 value={answers[a.id] ?? ""}
                 onChange={(e) => setAnswers({ ...answers, [a.id]: e.target.value })}
-                placeholder="new value"
+                name="overrule" autoComplete="off" placeholder="New value…" style={{ flex: "1 1 220px" }}
               />
               <button className="secondary" disabled={!answers[a.id]} onClick={() => act(`/assumptions/${a.id}/overrule`, { value: answers[a.id] })}>
                 Overrule
@@ -94,10 +93,11 @@ export default function Inbox() {
         </div>
       ))}
       <h2>Notifications ({notes.length})</h2>
+      {notes.length === 0 && <Empty title="No unread notifications" />}
       {notes.map((n) => (
         <div className="row" key={n.id}>
           <span>
-            <strong>{n.title}</strong> <span className="muted">{n.kind}</span>
+            <strong>{n.title}</strong> <Badge status={n.kind} />
           </span>
           <button className="secondary" onClick={() => act(`/notifications/${n.id}/read`)}>
             Mark read
