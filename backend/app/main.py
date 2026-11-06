@@ -19,7 +19,7 @@ from .pipeline.github import GhClient
 from .pipeline.merge_exec import MergeRefused, merge_batch
 from .pipeline.merge_gate import GateConfig
 from .pipeline.worktrees import WorktreeError, WorktreeManager
-from .orchestrator import Orchestrator, check_workspace, default_root, status_table, team_check, team_snapshot
+from .orchestrator import DelegationError, Orchestrator, check_workspace, default_root, status_table, team_check, team_snapshot
 from .scheduler import Scheduler, budget_percent_used
 from .providers import pricing, registry
 from .providers.presets import PRESETS
@@ -247,47 +247,59 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
         wait: bool = False
         feature_id: str | None = None
 
-    @app.post("/api/runs", dependencies=guard)
-    def start_run(body: RunIn):
-        if body.role == "developer":  # FR-33: no development before the human approved the SRS
+    class LaunchError(Exception):
+        def __init__(self, status: int, msg: str):
+            super().__init__(msg)
+            self.status = status
+
+    def _launch(role_name: str, task: str, workspace: str, wait: bool = False, feature_id: str | None = None):
+        """Start one agent run. Shared by POST /api/runs and the Orchestrator's delegate tool."""
+        if role_name == "developer":  # FR-33: no development before the human approved the SRS
             try:
-                require_approved(body.feature_id)
+                require_approved(feature_id)
             except NotApproved as e:
-                raise HTTPException(409, str(e))
+                raise LaunchError(409, str(e))
         roles = load_roles(registry.get_settings()["role_dirs"])
-        role = roles.get(body.role)
+        role = roles.get(role_name)
         if not role:
-            raise HTTPException(404, f"unknown role {body.role}")
+            raise LaunchError(404, f"unknown role {role_name}")
         st = registry.get_settings()
         try:
-            ws = check_workspace(body.workspace, st["workspace_roots"] or [str(default_root())])
+            ws = check_workspace(workspace, st["workspace_roots"] or [str(default_root())])
         except ValueError as e:
-            raise HTTPException(400, str(e))
+            raise LaunchError(400, str(e))
         pct = budget_percent_used(st["daily_budget_usd"])
         if pct is not None and pct >= 100:
             Notifier().send("budget_pause", "Daily LLM budget reached",
                             f"Used {pct:.0f}% of the daily cap; new runs are blocked.", key="budget_pause")
-            raise HTTPException(429, "daily LLM budget reached; new runs are blocked")
-        mapping = db.kv_get("role_models", {}).get(body.role)
+            raise LaunchError(429, "daily LLM budget reached; new runs are blocked")
+        mapping = db.kv_get("role_models", {}).get(role_name)
         if not mapping:
-            raise HTTPException(400, f"no model configured for role {body.role}")
+            raise LaunchError(400, f"no model configured for role {role_name}")
         rec = providers_repo.get(mapping["provider_id"])
         if not rec:
-            raise HTTPException(400, "provider for this role no longer exists")
+            raise LaunchError(400, "provider for this role no longer exists")
         try:
             provider = registry.build(rec, client=app.state.http_client)
         except ValueError as e:
-            raise HTTPException(400, str(e))
+            raise LaunchError(400, str(e))
         reg = _registry()
         lim = registry.get_settings()["run_limits"]
         runner = rt.Runner(provider, mapping["model"], role, ToolBox(Workspace(ws), reg), reg,
                            rt.Limits(max_steps=lim["max_steps"], max_total_tokens=lim["max_total_tokens"]),
                            provider_id=rec["id"])
-        run = runner.start(body.task, str(ws))
-        if body.wait:
+        run = runner.start(task, str(ws))
+        if wait:
             return runner.run(run["id"])
         threading.Thread(target=runner.run, args=(run["id"],), daemon=True).start()
         return run
+
+    @app.post("/api/runs", dependencies=guard)
+    def start_run(body: RunIn):
+        try:
+            return _launch(body.role, body.task, body.workspace, body.wait, body.feature_id)
+        except LaunchError as e:
+            raise HTTPException(e.status, str(e))
 
     @app.get("/api/runs", dependencies=guard)
     def list_runs():
@@ -515,6 +527,36 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             return registry.build(rec, client=app.state.http_client)
         return team_check(roles or {r: None for r in ROLES}, db.kv_get("role_models", {}), build)
 
+    class _Delegator:
+        """What the Orchestrator's delegate / get_report / list_runs tools call. Same rules as POST /api/runs."""
+
+        def __init__(self, roles: dict):
+            self.roles = roles
+
+        def delegate(self, role, task, area, done_criteria, context, feature_id):
+            if role == "orchestrator":
+                raise DelegationError("the orchestrator cannot delegate to itself")
+            if role not in self.roles:
+                raise DelegationError(f"unknown role {role}; roles are: {', '.join(self.roles)}")
+            st = registry.get_settings()
+            ws = (st["workspace_roots"] or [str(default_root())])[0]
+            try:
+                run = _launch(role, task, ws, wait=os.environ.get("AO_SYNC_RUNS") == "1", feature_id=feature_id)
+            except LaunchError as e:
+                raise DelegationError(str(e))
+            return {"run_id": run["id"], "role": role, "status": run["status"]}
+
+        def report(self, run_id):
+            run = rt.runs.get(run_id)
+            if not run:
+                raise DelegationError(f"no run {run_id}")
+            return {"run_id": run_id, "role": run["role"], "task": run["task"], "status": run["status"],
+                    "steps": run["steps"], "error": run["error"], "result": run.get("result")}
+
+        def runs(self):
+            return [{"run_id": r["id"], "role": r["role"], "task": r["task"][:120], "status": r["status"]}
+                    for r in rt.runs.list()][-30:]
+
     @app.post("/api/chat", dependencies=guard)
     def chat(body: ScanIn):
         mapping = db.kv_get("role_models", {}).get("orchestrator")
@@ -524,7 +566,7 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
         roles = load_roles(registry.get_settings()["role_dirs"])
         o = Orchestrator(registry.build(rec, client=app.state.http_client), mapping["model"],
                          roles["orchestrator"].body if "orchestrator" in roles else "", rec["id"],
-                         context=_team_context(roles))
+                         context=_team_context(roles), delegator=_Delegator(roles))
         try:
             return o.chat(body.text)
         except ProviderError as e:
