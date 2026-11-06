@@ -22,6 +22,7 @@ from .pipeline.worktrees import WorktreeError, WorktreeManager
 from .orchestrator import Orchestrator, check_workspace, default_root, status_table
 from .scheduler import Scheduler, budget_percent_used
 from .providers import pricing, registry
+from .providers.presets import PRESETS
 from .providers.base import ProviderError
 from .runtime import runner as rt
 from .runtime.roles import load_roles, validate
@@ -127,6 +128,10 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
         out = {k: v for k, v in rec.items() if k != "api_key_enc"}
         out["api_key"] = secrets_store.mask(secrets_store.decrypt(rec["api_key_enc"]))
         return out
+
+    @app.get("/api/providers/presets", dependencies=guard)
+    def provider_presets():
+        return {"presets": PRESETS}
 
     @app.get("/api/providers/types", dependencies=guard)
     def provider_types():

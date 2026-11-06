@@ -5,6 +5,8 @@ import { api } from "../../lib/api";
 export default function Providers() {
   const [list, setList] = useState<any[]>([]);
   const [types, setTypes] = useState<string[]>([]);
+  const [presets, setPresets] = useState<any[]>([]);
+  const [pid, setPid] = useState("openai");
   const [f, setF] = useState({ name: "", type: "openai", base_url: "", api_key: "" });
   const [model, setModel] = useState("");
   const [res, setRes] = useState<Record<string, string>>({});
@@ -14,6 +16,7 @@ export default function Providers() {
     try {
       setList(await api("/providers"));
       setTypes((await api("/providers/types")).types);
+      setPresets((await api("/providers/presets")).presets);
     } catch (e: any) {
       setErr(e.message);
     }
@@ -40,19 +43,41 @@ export default function Providers() {
       [id]: r.ok ? `OK (${r.usage.input_tokens}/${r.usage.output_tokens} tokens)` : `Failed: ${r.error_kind}`,
     });
   }
+  const preset = presets.find((p) => p.id === pid);
   const cli = f.type === "claude_cli";
+  const needsKey = !cli && (preset ? preset.needs_key : true);
+  function choose(id: string) {
+    setPid(id);
+    const p = presets.find((x) => x.id === id);
+    if (p) setF({ ...f, type: p.type, base_url: p.base_url, name: f.name || p.name });
+  }
   return (
     <>
       <h1>LLM providers</h1>
       <form onSubmit={add} className="card">
         <label htmlFor="n">Name</label>
         <input id="n" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required />
-        <label htmlFor="t">Type</label>
-        <select id="t" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}>
-          {types.map((t) => (
-            <option key={t}>{t}</option>
+        <label htmlFor="pr">Provider</label>
+        <select id="pr" value={pid} onChange={(e) => choose(e.target.value)}>
+          {presets.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
           ))}
         </select>
+        {preset?.note && <p className="muted">{preset.note}</p>}
+        {pid === "custom" && (
+          <>
+            <label htmlFor="t">Protocol</label>
+            <select id="t" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}>
+              {types
+                .filter((t) => t !== "claude_cli")
+                .map((t) => (
+                  <option key={t}>{t}</option>
+                ))}
+            </select>
+          </>
+        )}
         <label htmlFor="u">{cli ? "Path to claude.exe (optional)" : "Base URL"}</label>
         <input
           id="u"
@@ -62,20 +87,16 @@ export default function Providers() {
           onChange={(e) => setF({ ...f, base_url: e.target.value })}
           required={!cli}
         />
-        {cli ? (
-          <p className="muted">
-            Uses your own Claude login on this computer, no API key. Models: sonnet, opus, haiku (or a full model name).
-          </p>
-        ) : (
+        {!cli && (
           <>
-            <label htmlFor="k">API key</label>
+            <label htmlFor="k">API key{needsKey ? "" : " (not needed)"}</label>
             <input
               id="k"
               type="password"
               autoComplete="off"
               value={f.api_key}
               onChange={(e) => setF({ ...f, api_key: e.target.value })}
-              required
+              required={needsKey}
             />
           </>
         )}

@@ -61,3 +61,6 @@ Done: `desktop/` Electron shell (spawns backend + UI, window, per-user data dir,
 ## Provider without an API key (2026-11-06)
 Done: `claude_cli` provider type (app/providers/claude_cli.py): runs `claude -p` with the user's own Claude login, CLI tools off, our tool calls via a JSON protocol (only offered tools accepted), ANTHROPIC_API_KEY removed from the child env, auto-finds the claude.exe bundled with the Claude desktop app. Providers page hides the key field for it. 190 backend tests pass (12 new, red first).
 Verified live: the adapter finds and runs the real claude.exe and reports "not logged in" correctly. NOT verified: a successful real completion or tool call, because that claude.exe needs a one-time `/login` by the user.
+
+## Provider presets (2026-11-06)
+Done: `app/providers/presets.py` + `GET /api/providers/presets`: OpenAI, Anthropic, Claude login, Gemini, Microsoft Foundry/Azure, Mistral, Groq, xAI, DeepSeek, OpenRouter, Together, Fireworks, Perplexity, Cohere, Ollama, LM Studio, Custom (pick protocol + URL + key). Providers page uses a Provider picker. 196 tests pass. NOT verified: no vendor endpoint was called, so each preset URL is from vendor docs as I know them, unchecked live. Not covered: AWS Bedrock, Google Vertex (need signing/OAuth), custom extra headers.
