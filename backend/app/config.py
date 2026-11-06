@@ -22,4 +22,7 @@ DEFAULT_SETTINGS = {
     "attribution_trailer": "",  # A-16, empty = off
     "review_round_limit": 3,  # Q-6
     "decide_with_defaults": False,
+    "skill_paths": [str(Path.home() / ".claude" / "skills")],  # precedence: first wins
+    "role_dirs": [],
+    "run_limits": {"max_steps": 30, "max_total_tokens": 500000},
 }
