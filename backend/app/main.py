@@ -172,6 +172,8 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             return {"ok": False, "error_kind": e.kind, "error": secrets_store.redact(str(e))}
         except ValueError as e:
             raise HTTPException(400, str(e))
+        except Exception as e:  # never let an adapter crash become a silent 500 in the UI
+            return {"ok": False, "error_kind": "unknown", "error": secrets_store.redact(f"{type(e).__name__}: {e}")}
 
     # ---- per-role models (FR-8) ----
     @app.get("/api/role-models", dependencies=guard)

@@ -44,11 +44,15 @@ export default function Providers() {
     }
   }
   async function test(id: string) {
-    const r = await api(`/providers/${id}/test`, "POST", { model });
-    setRes({
-      ...res,
-      [id]: r.ok ? `OK (${r.usage.input_tokens}/${r.usage.output_tokens} tokens)` : `Failed (${r.error_kind}): ${r.error}`,
-    });
+    setRes((x) => ({ ...x, [id]: "Testing... this can take up to a minute" }));
+    let msg: string;
+    try {
+      const r = await api(`/providers/${id}/test`, "POST", { model });
+      msg = r.ok ? `OK (${r.usage.input_tokens}/${r.usage.output_tokens} tokens)` : `Failed (${r.error_kind}): ${r.error}`;
+    } catch (e: any) {
+      msg = `Failed: ${e.message}`;
+    }
+    setRes((x) => ({ ...x, [id]: msg }));
   }
   async function assign(rolesToSet: string[]) {
     setErr("");
@@ -186,7 +190,7 @@ export default function Providers() {
             >
               Delete
             </button>
-            <span role="status">{res[p.id]}</span>
+            <span role="status" style={{ whiteSpace: "pre-wrap" }}>{res[p.id]}</span>
           </div>
         </div>
       ))}
