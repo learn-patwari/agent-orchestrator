@@ -3,17 +3,27 @@ import { useEffect, useState } from "react";
 import { Alert, Badge, Empty, PageHead } from "../../components/ui";
 import { api } from "../../lib/api";
 
-type Check = { role: string; responding: boolean; detail: string };
+type TeamRow = {
+  role: string;
+  description: string;
+  tools: string[];
+  model: string | null;
+  state: string;
+  task: string | null;
+  steps: number;
+};
+type CheckRow = { role: string; responding: boolean; detail: string };
 
 export default function Status() {
-  const [rows, setRows] = useState<any[] | null>(null);
+  const [rows, setRows] = useState<TeamRow[] | null>(null);
   const [err, setErr] = useState("");
-  const [checks, setChecks] = useState<Record<string, Check> | null>(null);
   const [checking, setChecking] = useState(false);
+  const [checkErr, setCheckErr] = useState("");
+  const [checks, setChecks] = useState<Record<string, CheckRow> | null>(null);
 
   useEffect(() => {
     const load = () =>
-      api("/team")
+      api<TeamRow[]>("/team")
         .then((r) => {
           setRows(r);
           setErr("");
@@ -26,34 +36,29 @@ export default function Status() {
 
   async function runCheck() {
     setChecking(true);
-    setErr("");
+    setCheckErr("");
     try {
-      const r: Check[] = await api("/team/check", "POST");
+      const r = await api<CheckRow[]>("/team/check", "POST");
       setChecks(Object.fromEntries(r.map((c) => [c.role, c])));
     } catch (e: any) {
-      setErr(e.message);
+      setCheckErr(e.message || "The check failed.");
     } finally {
       setChecking(false);
     }
   }
 
-  const answered = checks ? Object.values(checks).filter((c) => c.responding).length : 0;
   return (
     <>
-      <PageHead title="Agents" sub="Each role, what it does, which model it uses and what it is doing now. Refreshes every 5 seconds." />
-      <div className="row">
-        <button onClick={runCheck} disabled={checking || !rows?.length}>
-          {checking ? "Checking…" : "Check Agents"}
-        </button>
-        <span className="muted">Asks each model once whether it answers. It uses a little of your quota, so it only runs when you click.</span>
-      </div>
-      {checking && <p className="muted" role="status">Checking each model. This can take up to a minute…</p>}
-      {checks && !checking && (
-        <Alert kind={answered === Object.keys(checks).length ? "ok" : "warn"}>
-          {answered} of {Object.keys(checks).length} roles have a model that answered.
-        </Alert>
-      )}
+      <PageHead title="Agents" sub="Each role, its model and what it is doing right now. Refreshes every 5 seconds.">
+        <p>
+          <button type="button" onClick={runCheck} disabled={checking || !rows || rows.length === 0} aria-busy={checking}>
+            {checking ? "Checking…" : "Check agents"}
+          </button>{" "}
+          <span className="muted">Sends a short test message to each model, so it can take a minute.</span>
+        </p>
+      </PageHead>
       {err && <Alert>{err}</Alert>}
+      {checkErr && <Alert>Check failed: {checkErr}</Alert>}
       {rows && rows.length === 0 && <Empty title="No agents yet">Agents appear here once roles are loaded.</Empty>}
       {rows && rows.length > 0 && (
         <div className="table-wrap">
@@ -61,11 +66,12 @@ export default function Status() {
             <thead>
               <tr>
                 <th scope="col">Role</th>
+                <th scope="col">Description</th>
                 <th scope="col">Model</th>
                 <th scope="col">State</th>
                 <th scope="col">Task</th>
                 <th scope="col">Steps</th>
-                <th scope="col">Responding</th>
+                {checks && <th scope="col">Check</th>}
               </tr>
             </thead>
             <tbody>
@@ -73,24 +79,24 @@ export default function Status() {
                 const c = checks?.[r.role];
                 return (
                   <tr key={r.role}>
-                    <td>
-                      <strong>{r.role}</strong>
-                      <div className="muted" style={{ fontSize: "0.85rem" }}>{r.description}</div>
-                    </td>
+                    <td className="nowrap"><strong>{r.role}</strong></td>
+                    <td>{r.description || "–"}</td>
                     <td>{r.model ?? <Badge status="not set" tone="warn" />}</td>
                     <td><Badge status={r.state} /></td>
                     <td>{r.task ?? "–"}</td>
                     <td>{r.steps}</td>
-                    <td>
-                      {c ? (
-                        <>
-                          <Badge status={c.responding ? "responding" : "not responding"} tone={c.responding ? "ok" : "err"} />
-                          {!c.responding && <div className="muted" style={{ fontSize: "0.82rem" }}>{c.detail}</div>}
-                        </>
-                      ) : (
-                        <span className="muted">not checked</span>
-                      )}
-                    </td>
+                    {checks && (
+                      <td>
+                        {c ? (
+                          <>
+                            <Badge status={c.responding ? "Responding" : "Not responding"} tone={c.responding ? "ok" : "err"} />
+                            {c.detail && <div className="muted">{c.detail}</div>}
+                          </>
+                        ) : (
+                          "–"
+                        )}
+                      </td>
+                    )}
                   </tr>
                 );
               })}

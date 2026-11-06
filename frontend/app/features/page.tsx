@@ -76,13 +76,15 @@ export default function Features() {
       {list.length === 0 ? (
         <Empty title="No features yet">Your first feature will appear here once you hand it to the architect.</Empty>
       ) : (
-        <div className="row" role="list" aria-label="Features">
+        <ul className="chips" aria-label="Features">
           {list.map((x) => (
-            <button key={x.id} role="listitem" className="secondary" aria-pressed={sel?.id === x.id} onClick={() => load(x.id)}>
-              {x.title} <Badge status={x.status} />
-            </button>
+            <li key={x.id}>
+              <button className="secondary chip" aria-pressed={sel?.id === x.id} onClick={() => load(x.id)}>
+                <span>{x.title}</span> <Badge status={x.status} />
+              </button>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
       {sel && (
         <div className="card">
