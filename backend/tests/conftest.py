@@ -8,6 +8,7 @@ from app.main import create_app
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     monkeypatch.setenv("AO_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("AO_NO_SCHEDULER", "1")
     return tmp_path
 
 

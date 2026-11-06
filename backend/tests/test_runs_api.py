@@ -13,7 +13,8 @@ def setup_role(authed, tmp_path):
     roles = tmp_path / "roles"
     roles.mkdir()
     (roles / "developer.md").write_text("---\nname: developer\ndescription: dev\nskills: [ghost]\n---\nYou develop.")
-    authed.put("/api/settings", json={"role_dirs": [str(roles)], "skill_paths": [str(tmp_path / "skills")]})
+    authed.put("/api/settings", json={"role_dirs": [str(roles)], "skill_paths": [str(tmp_path / "skills")],
+                                      "workspace_roots": [str(tmp_path)]})
     pid = authed.post("/api/providers", json={"name": "p", "type": "openai", "base_url": "https://x/v1",
                                               "api_key": "sk-test-abcdefghijkl"}).json()["id"]
     return pid

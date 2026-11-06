@@ -1,4 +1,6 @@
 """Build adapters from stored provider records; external providers stay hidden (FR-9)."""
+import time
+
 import httpx
 
 from .. import db, secrets_store
@@ -39,5 +41,5 @@ def record_call(role: str, provider_id: str, model: str, usage, run_id: str | No
     return db.DocRepo("llm_calls").create({
         "role": role, "provider_id": provider_id, "model": model, "run_id": run_id,
         "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
-        "cost_usd": cost(model, usage.input_tokens, usage.output_tokens),
+        "cost_usd": cost(model, usage.input_tokens, usage.output_tokens), "at": time.time(),
     })
