@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api";
 
 export default function Providers() {
@@ -7,6 +7,7 @@ export default function Providers() {
   const [types, setTypes] = useState<string[]>([]);
   const [presets, setPresets] = useState<any[]>([]);
   const [pid, setPid] = useState("openai");
+  const seeded = useRef(false);
   const [roles, setRoles] = useState<string[]>([]);
   const [assigned, setAssigned] = useState<Record<string, { provider_id: string; model: string }>>({});
   const [rp, setRp] = useState("");
@@ -20,7 +21,13 @@ export default function Providers() {
     try {
       setList(await api("/providers"));
       setTypes((await api("/providers/types")).types);
-      setPresets((await api("/providers/presets")).presets);
+      const ps = (await api("/providers/presets")).presets;
+      setPresets(ps);
+      if (!seeded.current && ps.length) {
+        seeded.current = true; // apply the preselected provider once, so its URL is not left empty
+        const first = ps.find((x: any) => x.id === "openai") ?? ps[0];
+        setF((cur) => ({ ...cur, type: first.type, base_url: first.base_url, name: cur.name || first.name }));
+      }
       const rmod = await api("/role-models");
       setRoles(rmod.roles);
       setAssigned(rmod.models);

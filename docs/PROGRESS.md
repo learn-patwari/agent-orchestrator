@@ -67,3 +67,6 @@ Done: `app/providers/presets.py` + `GET /api/providers/presets`: OpenAI, Anthrop
 
 ## First user test findings (2026-11-06)
 - Chat said "no model configured for the orchestrator role": the Providers page had no role-model assignment. Added "Models for roles" (use for all roles / per role). Failed connection tests now show the error text. Verified only by typecheck and build; not clicked in a window. The reported "auth error when adding" is unexplained (screen recording could not be viewed); most likely a Claude-login test before /login.
+
+## Self-test in a browser (2026-11-06)
+Ran a separate instance (own data dir, ports 8766/3766) and drove it in the browser pane: setup, Providers page (17 presets, 8 roles), add Claude-login provider, Test connection (now shows the real error), "Use for all roles", Chat. Found and fixed: default OpenAI preset left the URL empty. Result with no Claude login: Test connection and Chat both show "Claude login needed ... /login" (expected). NOT verified: any successful model reply or tool call (needs the user's one-time /login); Pipeline, Features, Inbox, Agents, Settings pages not clicked.
