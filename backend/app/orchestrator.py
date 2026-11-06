@@ -35,15 +35,16 @@ def _history(limit: int = 20) -> list[Message]:
 
 
 class Orchestrator:
-    def __init__(self, provider, model: str, role_body: str = "", provider_id: str = ""):
+    def __init__(self, provider, model: str, role_body: str = "", provider_id: str = "", context: str = ""):
         self.p, self.model, self.body, self.provider_id = provider, model, role_body, provider_id
+        self.context = context  # live team snapshot, rebuilt by the caller on every message
 
     def chat(self, text: str) -> dict:
         warning = KEY_WARNING if secrets_store.looks_like_secret(text) else None
         clean = secrets_store.redact(text) if warning else text
         history = _history()
         messages.create({"chat": True, "role": "user", "content": clean, "at": time.time()})
-        system = "\n\n".join(x for x in (self.body, RULES) if x)
+        system = "\n\n".join(x for x in (self.body, RULES, self.context) if x)
         c = self.p.complete(self.model, [Message("system", system), *history, Message("user", clean)],
                             max_tokens=600)
         record_call("orchestrator", self.provider_id, self.model, c.usage)
@@ -95,3 +96,50 @@ def check_workspace(path: str, roots: list[str]) -> Path:
         if p == rr or rr in p.parents:
             return p
     raise ValueError("workspace is outside the allowed workspace roots")
+
+
+def team_snapshot(roles: dict, role_models: dict, provider_names: dict, status_rows: list[dict], open_items: int,
+                  features: list[dict]) -> str:
+    """Plain-text picture of the team for the Orchestrator's context. Facts only; liveness is not claimed."""
+    state = {r["role"]: r for r in status_rows}
+    lines = ["TEAM SNAPSHOT (from configuration and run records; not verified live. The human can run "
+             "Check agents on the Agents page to test that each model answers):"]
+    for name in dict.fromkeys([*roles, *state]):
+        desc = roles[name].description if name in roles else "(no role file)"
+        m = role_models.get(name)
+        model = (f"{provider_names.get(m['provider_id'], 'unknown provider')} / {m['model']}" if m
+                 else "no model assigned")
+        st = state.get(name, {})
+        work = st.get("state", "idle")
+        if st.get("task"):
+            work += f" on '{st['task']}' ({st.get('steps', 0)} steps)"
+        if st.get("error"):
+            work += f", last error: {st['error']}"
+        lines.append(f"- {name}: {desc} | model: {model} | state: {work}")
+    lines.append(f"Inbox: {open_items} open item(s) waiting for the human.")
+    if features:
+        lines.append("Features: " + "; ".join(f"{f['title']} [{f['status']}]" for f in features[:10]))
+    else:
+        lines.append("Features: none yet.")
+    return "\n".join(lines)
+
+
+def team_check(roles: dict, role_models: dict, build_provider) -> list[dict]:
+    """Really ask each distinct provider+model once, then report per role. build_provider(provider_id) -> adapter."""
+    cache: dict[tuple, tuple[bool, str]] = {}
+    out = []
+    for name in roles:
+        m = role_models.get(name)
+        if not m:
+            out.append({"role": name, "responding": False, "detail": "no model assigned"})
+            continue
+        key = (m["provider_id"], m["model"])
+        if key not in cache:
+            try:
+                build_provider(m["provider_id"]).test_connection(m["model"])
+                cache[key] = (True, "answered")
+            except Exception as e:  # any failure means this role cannot work right now
+                cache[key] = (False, secrets_store.redact(f"{type(e).__name__}: {e}")[:300])
+        ok, detail = cache[key]
+        out.append({"role": name, "responding": ok, "detail": detail})
+    return out
