@@ -12,9 +12,10 @@ Branches: `m1-skeleton` (PR 1), `m3-runtime` (PR 2, stacked), `m4-inbox-gates` (
 - M4 complete (tests first, red confirmed per slice): inbox with recommended defaults, assumptions list with overrule, decide-with-defaults (never auto-approves gates), single-use audited gates; in-app notifications (question/approval items notify, duplicates suppressed); local scheduler (one-shot and recurring, runs once after a long gap, failing job isolated) paused at >=80% of an optional daily USD cap and resuming by itself, background loop in the app (`AO_NO_SCHEDULER` disables it); orchestrator chat (history, secret paste warning, redaction before store or send, rules + untrusted policy in system prompt), self-contained brief builder, per-role status table; workspace roots (default only `<data>/workspaces`) and a hard stop on new runs at 100% of the daily cap; UI pages Chat, Inbox (answers, approvals, assumptions, notifications), Agents.
 - M5 (tests first, red confirmed per slice): BA/Architect flow. Intake calls the architect model for restatement, why, architect-view impact and at most 5 questions (invalid defaults repaired, bad JSON rejected without storing a feature); questions are posted one at a time (idempotent, never skips an open question); decide-with-defaults answers them as recorded assumptions but never approves the SRS; finalize produces a phased plan, assigns lanes (shared files share a lane and stack, dependency waves, cycle/unknown-dependency rejection), assembles the SRS from the template with D-n/A-n [A]/risks/sign-off block and versions it; the SRS approval is a human gate; developer runs are refused (409) unless the feature is approved. API: /api/features (+ /srs, /finalize), inbox actions advance features. UI: Features page. Skills added in `.development/skills/`: feature-intake-ba, srs-writer, phased-plan-lanes.
 - M6 part 1 (tests first, red confirmed per slice): `backend/app/pipeline/`: git worktree manager (one worktree and `task/<name>` branch per task, stacked tasks branch from another task branch, name validation, refuses root inside the repo, refuses removing uncommitted work), merge gate (pure: base = integration branch, latest APPROVE on the CURRENT head via first-line `Verdict:` and second-line `Head:`, no unresolved medium+ findings, CI success, mergeable, tests with counts and none failing, no secret/production-config/reviewer-permission changes, review-round limit escalates; all failing reasons reported together), merge command with `--match-head-commit` and configurable style (never `--admin`), stacked-PR batch planner (base first, orphans and cycles skipped), `gh` client (PR facts, retarget, merge; runner injectable), batch executor (authority switch, never main/master/stage, retarget after base merge, head re-checked right before merge, dependents of a refused PR refused, audit events). Skill `merge-gate` added.
+- M7 slice 1 (tests first): generic quota guard (`backend/app/quota.py`): per-platform limits table (Vercel Hobby seeded: 100/day, 100/hour, 1 concurrent build), rolling windows, stop at a threshold (default 70%) with a single notification, platform limit error stops everything for a day with no retries, unknown platform/metric is an error, custom tables for other platforms. Skill `quota-guard` added. Branch `m7-cicd` (stacked on m6-pipeline).
 
 ## Verified
-- Backend: 162 pytest tests pass (mock HTTP transport and a scripted fake provider; no live LLM). The tests caught two real bugs, now fixed: Windows quote handling in the shell tool, and the never-stage denylist not unstaging in a repo with no commits (now uses `git rm --cached`).
+- Backend: 172 pytest tests pass (mock HTTP transport and a scripted fake provider; no live LLM). The tests caught two real bugs, now fixed: Windows quote handling in the shell tool, and the never-stage denylist not unstaging in a repo with no commits (now uses `git rm --cached`).
 - Frontend: `tsc --noEmit` and `next build` pass.
 - Manual smoke: backend + `next start` run together; setup, cookie auth, settings and the 401 guard work through the Next proxy.
 
@@ -35,5 +36,21 @@ Branches: `m1-skeleton` (PR 1), `m3-runtime` (PR 2, stacked), `m4-inbox-gates` (
 
 ## Next
 1. Live test of both adapters with a real key and base URL.
-2. Wire agents to the pipeline (developer run in the task worktree, tester run that records counts, reviewer run that posts the verdict) and a gated push/PR tool; then M7 (Vercel adapter, quota guard, releases, incidents, bug tracker).
+2. M7 remaining: Vercel adapter (status/logs, preview vs production), release cutting (SemVer suggestion, notes generation + edit UI, tag, GitHub Release, merge-to-main decision screen), smoke runner, built-in bug tracker, incident reporter and production support loop; skills semver-release, release-notes-writer, bug-lifecycle. Also: wire agents to the pipeline (developer run in the task worktree, tester run that records counts, reviewer run that posts the verdict) and a gated push/PR tool; then M7 (Vercel adapter, quota guard, releases, incidents, bug tracker).
 3. Add frontend tests (vitest, exclude `e2e/`) and a role-models UI.
+
+## M7 slice 2 (release helpers)
+Done: `app/releases.py` (suggest_bump, next_version, generate_notes), skills semver-release and release-notes-writer. 179 backend tests pass (7 new, red first).
+Not done in M7: Vercel adapter, release cutting endpoint/UI (tag, GitHub Release, merge-to-main decision), smoke runner, bug tracker, incident reporter, production support, bug-lifecycle skill.
+
+## Decisions 2026-11-06 (user)
+- Targets: web apps AND Windows apps (SRS D-12). M7 CI/CD adapter gets a Windows package/release kind next to Vercel; quota guard stays generic.
+- Orchestrator ships as a Windows desktop app (SRS D-13): Electron shell proposed, Python backend as sidecar, new milestone M11. Not started.
+
+## Decisions 2026-11-06 (user), part 2
+- Code host: Bitbucket Server/Data Center, self-hosted (SRS D-14). Needs a Git-host interface; gh stays one adapter. Not started.
+- Kubernetes deploy adapter (D-15). Open Q-12: deploy target only, or agents also run as k8s jobs (default: target only).
+- Needs from user to build the Bitbucket adapter: base URL, project/repo key, auth type (HTTP access token assumed), whether Bitbucket approvals should count.
+
+## Decision 2026-11-06 (user), part 3
+- Agent builder and deployer, Foundry-style, as reusable plugins (SRS D-16). Plan change: pull M9 (plugin system + agent builder UI + export/install) ahead of the rest of M7; Bitbucket, Kubernetes, Windows-release and Vercel become plugins behind interfaces. Not started.
