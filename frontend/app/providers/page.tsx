@@ -7,6 +7,10 @@ export default function Providers() {
   const [types, setTypes] = useState<string[]>([]);
   const [presets, setPresets] = useState<any[]>([]);
   const [pid, setPid] = useState("openai");
+  const [roles, setRoles] = useState<string[]>([]);
+  const [assigned, setAssigned] = useState<Record<string, { provider_id: string; model: string }>>({});
+  const [rp, setRp] = useState("");
+  const [rm, setRm] = useState("");
   const [f, setF] = useState({ name: "", type: "openai", base_url: "", api_key: "" });
   const [model, setModel] = useState("");
   const [res, setRes] = useState<Record<string, string>>({});
@@ -17,6 +21,9 @@ export default function Providers() {
       setList(await api("/providers"));
       setTypes((await api("/providers/types")).types);
       setPresets((await api("/providers/presets")).presets);
+      const rmod = await api("/role-models");
+      setRoles(rmod.roles);
+      setAssigned(rmod.models);
     } catch (e: any) {
       setErr(e.message);
     }
@@ -40,8 +47,17 @@ export default function Providers() {
     const r = await api(`/providers/${id}/test`, "POST", { model });
     setRes({
       ...res,
-      [id]: r.ok ? `OK (${r.usage.input_tokens}/${r.usage.output_tokens} tokens)` : `Failed: ${r.error_kind}`,
+      [id]: r.ok ? `OK (${r.usage.input_tokens}/${r.usage.output_tokens} tokens)` : `Failed (${r.error_kind}): ${r.error}`,
     });
+  }
+  async function assign(rolesToSet: string[]) {
+    setErr("");
+    try {
+      for (const r of rolesToSet) await api(`/role-models/${r}`, "PUT", { provider_id: rp, model: rm });
+      load();
+    } catch (e: any) {
+      setErr(e.message);
+    }
   }
   const preset = presets.find((p) => p.id === pid);
   const cli = f.type === "claude_cli";
@@ -111,6 +127,46 @@ export default function Providers() {
       )}
       <label htmlFor="m">Model for test connection</label>
       <input id="m" value={model} onChange={(e) => setModel(e.target.value)} placeholder="model name" />
+      <h2>Models for roles</h2>
+      <p className="muted">The Orchestrator and every agent need a provider and model before chat works.</p>
+      <div className="card">
+        <label htmlFor="rp">Provider</label>
+        <select id="rp" value={rp} onChange={(e) => setRp(e.target.value)}>
+          <option value="">choose...</option>
+          {list.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+        <label htmlFor="rm">Model</label>
+        <input id="rm" value={rm} onChange={(e) => setRm(e.target.value)} placeholder="e.g. sonnet, gpt-4o, gemini-2.0-flash" />
+        <div className="row">
+          <button disabled={!rp || !rm} onClick={() => assign(roles)}>
+            Use for all roles
+          </button>
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}>
+          <tbody>
+            {roles.map((r) => (
+              <tr key={r}>
+                <td>{r}</td>
+                <td className="muted">
+                  {assigned[r]
+                    ? `${list.find((p) => p.id === assigned[r].provider_id)?.name ?? "?"} / ${assigned[r].model}`
+                    : "not set"}
+                </td>
+                <td>
+                  <button className="secondary" disabled={!rp || !rm} onClick={() => assign([r])}>
+                    Set to selection
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <h2>Providers</h2>
       {list.map((p) => (
         <div className="card" key={p.id}>
           <strong>{p.name}</strong>{" "}

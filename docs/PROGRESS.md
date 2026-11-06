@@ -64,3 +64,6 @@ Verified live: the adapter finds and runs the real claude.exe and reports "not l
 
 ## Provider presets (2026-11-06)
 Done: `app/providers/presets.py` + `GET /api/providers/presets`: OpenAI, Anthropic, Claude login, Gemini, Microsoft Foundry/Azure, Mistral, Groq, xAI, DeepSeek, OpenRouter, Together, Fireworks, Perplexity, Cohere, Ollama, LM Studio, Custom (pick protocol + URL + key). Providers page uses a Provider picker. 196 tests pass. NOT verified: no vendor endpoint was called, so each preset URL is from vendor docs as I know them, unchecked live. Not covered: AWS Bedrock, Google Vertex (need signing/OAuth), custom extra headers.
+
+## First user test findings (2026-11-06)
+- Chat said "no model configured for the orchestrator role": the Providers page had no role-model assignment. Added "Models for roles" (use for all roles / per role). Failed connection tests now show the error text. Verified only by typecheck and build; not clicked in a window. The reported "auth error when adding" is unexplained (screen recording could not be viewed); most likely a Claude-login test before /login.
