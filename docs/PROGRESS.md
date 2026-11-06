@@ -1,6 +1,6 @@
 # Progress checkpoint
 
-Branches: `m1-skeleton` (PR 1), `m3-runtime` (PR 2, stacked), `m4-inbox-gates` (PR 3, stacked), `m4-orchestrator` (rest of M4, stacked on m4-inbox-gates). Updated 2026-11-05.
+Branches: `m1-skeleton` (PR 1), `m3-runtime` (PR 2, stacked), `m4-inbox-gates` (PR 3, stacked), `m4-orchestrator` (PR 4, stacked), `m5-ba-flow` (M5, stacked on m4-orchestrator). Updated 2026-11-05.
 
 ## Done
 - M0: SRS (`docs/srs/orchestrator-app.md`), sign-off recorded from the user's instruction to start development.
@@ -10,9 +10,10 @@ Branches: `m1-skeleton` (PR 1), `m3-runtime` (PR 2, stacked), `m4-inbox-gates` (
 - M3 (backend): role loader (frontmatter + default tool allow-lists, validation), skill registry (ordered paths, progressive load, read-only), tool layer (jailed files, allow-listed shell without a shell, git read/write with never-stage denylist and no push/reset/clean/rebase), run loop persisted per step with resume, untrusted-data wrapping, loop detection, step/token limits, context compaction; API: GET /api/skills, /api/roles, POST/GET /api/runs.
 
 - M4 complete (tests first, red confirmed per slice): inbox with recommended defaults, assumptions list with overrule, decide-with-defaults (never auto-approves gates), single-use audited gates; in-app notifications (question/approval items notify, duplicates suppressed); local scheduler (one-shot and recurring, runs once after a long gap, failing job isolated) paused at >=80% of an optional daily USD cap and resuming by itself, background loop in the app (`AO_NO_SCHEDULER` disables it); orchestrator chat (history, secret paste warning, redaction before store or send, rules + untrusted policy in system prompt), self-contained brief builder, per-role status table; workspace roots (default only `<data>/workspaces`) and a hard stop on new runs at 100% of the daily cap; UI pages Chat, Inbox (answers, approvals, assumptions, notifications), Agents.
+- M5 (tests first, red confirmed per slice): BA/Architect flow. Intake calls the architect model for restatement, why, architect-view impact and at most 5 questions (invalid defaults repaired, bad JSON rejected without storing a feature); questions are posted one at a time (idempotent, never skips an open question); decide-with-defaults answers them as recorded assumptions but never approves the SRS; finalize produces a phased plan, assigns lanes (shared files share a lane and stack, dependency waves, cycle/unknown-dependency rejection), assembles the SRS from the template with D-n/A-n [A]/risks/sign-off block and versions it; the SRS approval is a human gate; developer runs are refused (409) unless the feature is approved. API: /api/features (+ /srs, /finalize), inbox actions advance features. UI: Features page. Skills added in `.development/skills/`: feature-intake-ba, srs-writer, phased-plan-lanes.
 
 ## Verified
-- Backend: 77 pytest tests pass (mock HTTP transport and a scripted fake provider; no live LLM). The tests caught two real bugs, now fixed: Windows quote handling in the shell tool, and the never-stage denylist not unstaging in a repo with no commits (now uses `git rm --cached`).
+- Backend: 102 pytest tests pass (mock HTTP transport and a scripted fake provider; no live LLM). The tests caught two real bugs, now fixed: Windows quote handling in the shell tool, and the never-stage denylist not unstaging in a repo with no commits (now uses `git rm --cached`).
 - Frontend: `tsc --noEmit` and `next build` pass.
 - Manual smoke: backend + `next start` run together; setup, cookie auth, settings and the 401 guard work through the Next proxy.
 
@@ -26,7 +27,9 @@ Branches: `m1-skeleton` (PR 1), `m3-runtime` (PR 2, stacked), `m4-inbox-gates` (
 
 - M4 gaps: the orchestrator does not yet call tools (it replies in text; delegating real runs from chat arrives with the pipeline in M5/M6); only `reminder` scheduled jobs exist; no tool calls the gates yet (merge flow is M6); "usage" for the pause is our own daily USD cap, not the Claude plan limit (the plan-limit pacing in docs/dev-plan-usage-windows.md is a separate, Claude-session-level mechanism); UI pages were built, typechecked and served (HTTP 200) but not opened in a browser or covered by frontend tests; no live LLM call.
 
+- M5 gaps: the SRS is assembled from the template in code and the model only supplies analysis and plan JSON (the plan task file lists are the model's guesses, not checked against a repo); SRS is stored in the DB, not yet written into the project's `docs/srs/`; no SRS edit/re-generate/revision UI; UI not opened in a browser; no live LLM so prompt quality is untested.
+
 ## Next
 1. Live test of both adapters with a real key and base URL.
-2. M5 BA/Architect flow: feature intake, one-at-a-time questions, SRS generation and approval, phased plan with lanes.
+2. M6 Dev/Test/Review pipeline: worktrees, developer/tester/reviewer runs, merge gate into `internal`, release branch flow settings.
 3. Add frontend tests (vitest, exclude `e2e/`) and a role-models UI.

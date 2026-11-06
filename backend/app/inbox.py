@@ -17,6 +17,7 @@ GATED = {
     "credentials": "Use or provide credentials",
     "destructive_git": "Destructive git operation (force push, reset, branch delete)",
     "delete_data": "Permanently delete data",
+    "srs_approval": "Approve an SRS so development can start",
 }
 
 
@@ -46,8 +47,8 @@ class Inbox:
         return item
 
     def ask(self, title: str, body: str, options: list[str] | None = None, default: str | None = None,
-            run_id: str | None = None) -> dict:
-        item = self.post("question", title, body, options=options or [], default=default, run_id=run_id)
+            run_id: str | None = None, **extra) -> dict:
+        item = self.post("question", title, body, options=options or [], default=default, run_id=run_id, **extra)
         if self.auto and default is not None:
             return self._resolve_default(item, "auto_default")
         return item

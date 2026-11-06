@@ -2,7 +2,7 @@ import time
 
 import httpx
 
-from tests.test_runs_api import completion, setup_role
+from tests.test_runs_api import approved_fid, completion, setup_role
 
 
 def provider(authed):
@@ -62,7 +62,7 @@ def test_run_workspace_must_be_inside_allowed_roots(authed, tmp_path):
     outside.mkdir()
     authed.put("/api/settings", json={"workspace_roots": [str(allowed)]})
     authed.upstream.handler = lambda req: completion("done")
-    body = {"role": "developer", "task": "t", "wait": True}
+    body = {"role": "developer", "task": "t", "wait": True, "feature_id": approved_fid()}
     assert authed.post("/api/runs", json={**body, "workspace": str(outside)}).status_code == 400
     assert authed.post("/api/runs", json={**body, "workspace": str(allowed / "t1")}).json()["status"] == "done"
 
@@ -73,7 +73,8 @@ def test_default_workspace_root_is_inside_data_dir(authed, tmp_path):
     authed.put("/api/settings", json={"workspace_roots": []})  # setup_role allowed all of tmp_path
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
-    r = authed.post("/api/runs", json={"role": "developer", "task": "t", "workspace": str(elsewhere), "wait": True})
+    r = authed.post("/api/runs", json={"role": "developer", "task": "t", "workspace": str(elsewhere), "wait": True,
+                                       "feature_id": approved_fid()})
     assert r.status_code == 400  # nothing configured: only <data>/workspaces is allowed
 
 
@@ -85,6 +86,7 @@ def test_daily_budget_cap_blocks_new_runs(authed, tmp_path):
     ws.mkdir()
     authed.put("/api/settings", json={"workspace_roots": [str(ws)], "daily_budget_usd": 1.0})
     DocRepo("llm_calls").create({"role": "x", "cost_usd": 1.5, "at": time.time()})
-    r = authed.post("/api/runs", json={"role": "developer", "task": "t", "workspace": str(ws), "wait": True})
+    r = authed.post("/api/runs", json={"role": "developer", "task": "t", "workspace": str(ws), "wait": True,
+                                       "feature_id": approved_fid()})
     assert r.status_code == 429 and "budget" in r.json()["detail"].lower()
     assert [n["kind"] for n in authed.get("/api/notifications").json()] == ["budget_pause"]
