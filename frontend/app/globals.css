@@ -134,3 +134,13 @@ tbody tr:hover { background: var(--surface-2); }
 .chips li { min-width: 0; }
 button.chip { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; text-align: left; overflow-wrap: anywhere; }
 button.chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft, var(--surface-2)); }
+
+/* office view */
+.office-canvas{display:block;width:100%;height:auto;aspect-ratio:320/200;margin-top:12px;border:1px solid var(--line);border-radius:10px;cursor:pointer;image-rendering:pixelated;background:#cfc6b4}
+.agent-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.agent-chip{width:auto;min-height:0;display:inline-flex;align-items:center;gap:6px;font-size:.8rem;padding:4px 10px;border-radius:999px;background:var(--surface);color:var(--fg);border:1px solid var(--line);font-weight:500}
+.agent-chip[aria-pressed="true"]{border-color:var(--accent)}
+.agent-chip small{color:var(--muted)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%}
+dl.detail{display:grid;grid-template-columns:90px 1fr;gap:4px 8px;margin:8px 0 0}
+dl.detail dt{color:var(--muted)}dl.detail dd{margin:0}
