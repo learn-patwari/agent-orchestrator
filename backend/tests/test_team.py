@@ -76,7 +76,7 @@ def test_check_pings_each_distinct_model_once_and_reports_per_role():
 def test_builtin_roles_are_loaded_by_default_and_match_the_role_ids(authed):
     rows = authed.get("/api/team").json()
     ids = {r["role"] for r in rows}
-    assert {"orchestrator", "architect", "developer", "tester", "reviewer", "cicd",
+    assert {"orchestrator", "architect", "developer_1", "developer_2", "tester", "cicd",
             "incident_reporter", "production_support"} <= ids
     assert all(r["description"] for r in rows)
     assert all("model" in r and "state" in r for r in rows)

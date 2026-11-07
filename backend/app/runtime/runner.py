@@ -3,6 +3,7 @@ untrusted-data wrapping, loop detection, step/token limits and context compactio
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 
 from .. import db
@@ -96,7 +97,7 @@ class Runner:
         return run
 
     def _finish(self, run_id: str, status: str, error: str | None = None, **extra) -> dict:
-        return runs.update(run_id, {"status": status, "error": error, **extra})
+        return runs.update(run_id, {"status": status, "error": error, "finished_at": time.time(), **extra})
 
     def _exec_calls(self, run_id: str, calls: list[ToolCall], done: set[str]) -> str | None:
         """Run tool calls that have no persisted result yet. Returns a halt reason or None."""

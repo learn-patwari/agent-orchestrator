@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 import os
 import threading
+import time
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Response
@@ -25,13 +26,14 @@ from .providers import pricing, registry
 from .providers.presets import PRESETS
 from .providers.base import ProviderError
 from .runtime import runner as rt
-from .runtime.roles import load_roles, validate
+from .runtime.roles import DEVELOPERS, load_roles, validate
 from .runtime.skills import SkillRegistry
 from .runtime.tools import ToolBox, Workspace
 
 providers_repo = db.DocRepo("providers")
-ROLES = ["orchestrator", "architect", "developer", "tester", "reviewer", "cicd",
+ROLES = ["orchestrator", "architect", "developer_1", "developer_2", "tester", "cicd",
          "incident_reporter", "production_support"]
+handoffs_repo = db.DocRepo("handoffs")
 
 
 JOB_KINDS = {"reminder"}  # more kinds (start a run, resume a lane) arrive with the pipeline milestones
@@ -176,13 +178,17 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             return {"ok": False, "error_kind": "unknown", "error": secrets_store.redact(f"{type(e).__name__}: {e}")}
 
     # ---- per-role models (FR-8) ----
+    def _role_names() -> list[str]:
+        """Built-in roles plus any role file the user added, so every role can be given a model."""
+        return list(dict.fromkeys([*ROLES, *load_roles(registry.get_settings()["role_dirs"])]))
+
     @app.get("/api/role-models", dependencies=guard)
     def get_role_models():
-        return {"roles": ROLES, "models": db.kv_get("role_models", {})}
+        return {"roles": _role_names(), "models": db.kv_get("role_models", {})}
 
     @app.put("/api/role-models/{role}", dependencies=guard)
     def set_role_model(role: str, body: dict):
-        if role not in ROLES:
+        if role not in _role_names():
             raise HTTPException(404, "unknown role")
         if not providers_repo.get(body.get("provider_id", "")) or not body.get("model"):
             raise HTTPException(400, "need a known provider_id and a model")
@@ -254,7 +260,7 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
 
     def _launch(role_name: str, task: str, workspace: str, wait: bool = False, feature_id: str | None = None):
         """Start one agent run. Shared by POST /api/runs and the Orchestrator's delegate tool."""
-        if role_name == "developer":  # FR-33: no development before the human approved the SRS
+        if role_name in DEVELOPERS:  # FR-33: no development before the human approved the SRS
             try:
                 require_approved(feature_id)
             except NotApproved as e:
@@ -516,6 +522,19 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
                          "state": state[name]["state"], "task": state[name]["task"], "steps": state[name]["steps"]})
         return rows
 
+    @app.get("/api/office", dependencies=guard)
+    def office():
+        """What the office view animates: the team rows plus every hand-off, oldest first.
+        A hand-off is real: the Orchestrator delegated a run, or a run finished and reported back."""
+        hs = [{"id": h["id"], "from": h["from"], "to": h["to"], "label": h["label"], "at": h["at"]}
+              for h in handoffs_repo.list()]
+        for r in rt.runs.list():
+            if r["status"] in ("done", "failed") and r.get("finished_at"):
+                hs.append({"id": "report-" + r["id"], "from": r["role"], "to": "orchestrator",
+                           "label": r["status"], "at": r["finished_at"]})
+        hs.sort(key=lambda h: h["at"])
+        return {"team": team(), "handoffs": hs[-40:]}
+
     @app.post("/api/team/check", dependencies=guard)
     def team_check_endpoint():
         roles = load_roles(registry.get_settings()["role_dirs"])
@@ -534,16 +553,20 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             self.roles = roles
 
         def delegate(self, role, task, area, done_criteria, context, feature_id):
+            task_label = next((ln[6:] for ln in task.splitlines() if ln.startswith("Task: ")), task)[:60]
             if role == "orchestrator":
                 raise DelegationError("the orchestrator cannot delegate to itself")
             if role not in self.roles:
                 raise DelegationError(f"unknown role {role}; roles are: {', '.join(self.roles)}")
             st = registry.get_settings()
             ws = (st["workspace_roots"] or [str(default_root())])[0]
+            sent_at = time.time()  # taken before the run starts, so the report can never be dated earlier
             try:
                 run = _launch(role, task, ws, wait=os.environ.get("AO_SYNC_RUNS") == "1", feature_id=feature_id)
             except LaunchError as e:
                 raise DelegationError(str(e))
+            handoffs_repo.create({"from": "orchestrator", "to": role, "label": task_label, "at": sent_at,
+                                  "run_id": run["id"]})
             return {"run_id": run["id"], "role": role, "status": run["status"]}
 
         def report(self, run_id):

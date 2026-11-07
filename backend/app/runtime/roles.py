@@ -12,10 +12,13 @@ from pathlib import Path
 import yaml
 
 READ = ["read_file", "list_dir", "git_read", "use_skill"]
+DEVELOPERS = ("developer", "developer_1", "developer_2")  # all need an approved SRS before they may run
 DEFAULT_TOOLS = {
     "orchestrator": READ,
     "architect": READ + ["write_file"],
     "developer": READ + ["write_file", "run_shell", "git_write"],
+    "developer_1": READ + ["write_file", "run_shell", "git_write"],
+    "developer_2": READ + ["write_file", "run_shell", "git_write"],
     "tester": READ + ["write_file", "run_shell"],
     "reviewer": READ,
     "cicd": READ + ["run_shell"],
