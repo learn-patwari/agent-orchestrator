@@ -19,6 +19,8 @@ from .pipeline.flow import Flow, FlowError, tasks as tasks_repo
 from .pipeline.github import GhClient
 from .pipeline.merge_exec import MergeRefused, merge_batch
 from .pipeline.merge_gate import GateConfig
+from .incidents import IncidentError, IncidentTool, Incidents
+from .pipeline.agent_tool import PipelineTool
 from .pipeline.release import Release
 from .pipeline.worktrees import WorktreeError, WorktreeManager
 from .orchestrator import DelegationError, Orchestrator, check_workspace, default_root, status_table, team_check, team_snapshot
@@ -259,6 +261,11 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             super().__init__(msg)
             self.status = status
 
+    def _agent_flow() -> Flow:
+        # agents report steps on existing tasks; creating worktrees stays a human/API action
+        st = registry.get_settings()
+        return Flow(None, st["integration_branch"], st["review_round_limit"])
+
     def _launch(role_name: str, task: str, workspace: str, wait: bool = False, feature_id: str | None = None):
         """Start one agent run. Shared by POST /api/runs and the Orchestrator's delegate tool."""
         if role_name in DEVELOPERS:  # FR-33: no development before the human approved the SRS
@@ -292,7 +299,9 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             raise LaunchError(400, str(e))
         reg = _registry()
         lim = registry.get_settings()["run_limits"]
-        runner = rt.Runner(provider, mapping["model"], role, ToolBox(Workspace(ws), reg), reg,
+        runner = rt.Runner(provider, mapping["model"], role,
+                           ToolBox(Workspace(ws), reg, pipeline=PipelineTool(role_name, _agent_flow),
+                                   incidents=IncidentTool(role_name)), reg,
                            rt.Limits(max_steps=lim["max_steps"], max_total_tokens=lim["max_total_tokens"]),
                            provider_id=rec["id"])
         run = runner.start(task, str(ws))
@@ -469,6 +478,24 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
     def task_deploy_prod(tid: str):
         return _flow_call(Release().deployed_prod, tid)
 
+    class ProdTestsIn(BaseModel):
+        task_id: str
+        passed: int
+        failed: int
+        area: str
+
+    @app.post("/api/pipeline/prod-tests", dependencies=guard)
+    def prod_tests(body: ProdTestsIn):
+        """A production test report. A failing one raises an incident for production support, once."""
+        try:
+            return {"incident": Incidents().production_tests(body.task_id, body.passed, body.failed, body.area)}
+        except IncidentError as e:
+            raise HTTPException(404, str(e))
+
+    @app.get("/api/incidents", dependencies=guard)
+    def list_incidents():
+        return Incidents().list()
+
     @app.post("/api/pipeline/merge", dependencies=guard)
     def merge(body: MergeIn):
         st = registry.get_settings()
@@ -573,7 +600,8 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
         rel = Release()
         pending = [{"id": x["id"], "name": x["name"], "approvals": x.get("approvals", [])}
                    for x in tasks_repo.list() if x.get("release") == "awaiting_prod_approval"]
-        return {"team": team(), "handoffs": hs[-40:], "environments": rel.environments(), "pending_prod": pending}
+        return {"team": team(), "handoffs": hs[-40:], "environments": rel.environments(), "pending_prod": pending,
+                "open_incidents": len(Incidents().list(False))}
 
     @app.post("/api/team/check", dependencies=guard)
     def team_check_endpoint():
@@ -608,6 +636,13 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             handoffs_repo.create({"from": "orchestrator", "to": role, "label": task_label, "at": sent_at,
                                   "run_id": run["id"]})
             return {"run_id": run["id"], "role": role, "status": run["status"]}
+
+        def request_prod(self, task_id):
+            try:
+                t = Release().request_prod(task_id)
+            except FlowError as e:
+                raise DelegationError(str(e))
+            return {"task_id": task_id, "release": t["release"], "note": "the human was asked in the inbox"}
 
         def report(self, run_id):
             run = rt.runs.get(run_id)

@@ -15,6 +15,7 @@ export default function Status() {
   const [handoffs, setHandoffs] = useState<Handoff[]>([]);
   const [env, setEnv] = useState<Environments>(NO_ENV);
   const [pending, setPending] = useState<Pending[]>([]);
+  const [incidents, setIncidents] = useState(0);
   const [err, setErr] = useState("");
   const [checks, setChecks] = useState<Record<string, Check> | null>(null);
   const [checking, setChecking] = useState(false);
@@ -93,6 +94,11 @@ export default function Status() {
         </Alert>
       )}
       {err && <Alert>{err}</Alert>}
+      {incidents > 0 && (
+        <Alert kind="warn">
+          {incidents} open production {incidents === 1 ? "incident is" : "incidents are"} with production support.
+        </Alert>
+      )}
       {pending.map((p) => (
         <Alert key={p.id} kind="warn">
           <strong>Production needs your yes:</strong> deploy “{p.name}”? QC has signed off.{" "}

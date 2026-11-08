@@ -69,8 +69,11 @@ def _run(argv: list[str], cwd: Path, timeout: int) -> str:
 
 
 class ToolBox:
-    def __init__(self, ws: Workspace, skills: SkillRegistry | None = None, shell_timeout: int = 120):
+    def __init__(self, ws: Workspace, skills: SkillRegistry | None = None, shell_timeout: int = 120, pipeline=None,
+                 incidents=None):
         self.ws, self.skills, self.shell_timeout = ws, skills, shell_timeout
+        self.incidents = incidents  # callable bound to the acting role, see incidents.py
+        self.pipeline = pipeline  # callable bound to the acting role, see pipeline/agent_tool.py
         obj = {"type": "object"}
         self.specs: dict[str, list[ToolSpec]] = {
             "read_file": [ToolSpec("read_file", "Read a text file in the workspace.", {**obj, "properties": {"path": {"type": "string"}}, "required": ["path"]})],
@@ -79,6 +82,8 @@ class ToolBox:
             "run_shell": [ToolSpec("run_shell", "Run an allow-listed command in the workspace (no shell operators).", {**obj, "properties": {"command": {"type": "string"}}, "required": ["command"]})],
             "git_read": [ToolSpec("git_read", "Run a read-only git command (status, diff, log, show, branch).", {**obj, "properties": {"args": {"type": "string"}}, "required": ["args"]})],
             "git_write": [ToolSpec("git_write", "Run a local git command (add, commit, checkout, switch, restore, stash, worktree). Never push.", {**obj, "properties": {"args": {"type": "string"}}, "required": ["args"]})],
+            "pipeline": [ToolSpec("pipeline", "Report your own step on a task, or list tasks. Actions: list, dev_done (task_id, pr_number, head_sha), tests (task_id, passed, failed, area), review (task_id, body starting with 'Verdict: APPROVE|REQUEST_CHANGES|HOLD' then 'Head: <sha>'), architect_review (task_id, approve), deploy_qc, qc_result (task_id, passed, failed), prod_tests (task_id, passed, failed, area; tester, a failure raises an incident), approve_prod, deploy_prod. The platform refuses steps that are not yours.", {**obj, "properties": {"action": {"type": "string"}, "task_id": {"type": "string"}, "pr_number": {"type": "integer"}, "head_sha": {"type": "string"}, "passed": {"type": "integer"}, "failed": {"type": "integer"}, "area": {"type": "string"}, "body": {"type": "string"}, "approve": {"type": "boolean"}}, "required": ["action"]})],
+            "incident": [ToolSpec("incident", "Work on incidents. Actions: list; report (title, severity low|medium|high|critical, evidence, optional task_id) for the incident reporter; escalate (incident_id, reason) one level up to L4, hand_to_developer (incident_id) to send the fix to the feature's owning developer, and resolve (incident_id) for production support. The platform refuses steps that are not yours.", {**obj, "properties": {"action": {"type": "string"}, "title": {"type": "string"}, "severity": {"type": "string"}, "evidence": {"type": "string"}, "task_id": {"type": "string"}, "incident_id": {"type": "string"}, "reason": {"type": "string"}}, "required": ["action"]})],
             "use_skill": [ToolSpec("use_skill", "Load the full instructions of a listed skill by name.", {**obj, "properties": {"name": {"type": "string"}}, "required": ["name"]})],
         }
 
@@ -162,6 +167,16 @@ class ToolBox:
                 _run(["git", "rm", "--cached", "--quiet", "--ignore-unmatch", *bad], self.ws.root, 30)
                 raise ToolError(f"unstaged denylisted files: {bad}")
         return out
+
+    def _t_pipeline(self, **kw) -> str:
+        if self.pipeline is None:
+            raise ToolError("the pipeline is not available in this run")
+        return self.pipeline(**kw)
+
+    def _t_incident(self, **kw) -> str:
+        if self.incidents is None:
+            raise ToolError("incidents are not available in this run")
+        return self.incidents(**kw)
 
     def _t_use_skill(self, name: str) -> str:
         body = self.skills.load_body(name) if self.skills else None

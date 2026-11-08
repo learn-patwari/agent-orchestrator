@@ -46,12 +46,15 @@ ORCH_TOOLS = [
               "required": ["role", "task", "area", "done_criteria"]}),
     ToolSpec("get_report", "Read the status and final report of one run.",
              {**_OBJ, "properties": {"run_id": {"type": "string"}}, "required": ["run_id"]}),
+    ToolSpec("request_production", "Ask the human to approve a production deploy for a task. Refused unless QC has signed off. "
+             "You never deploy to production yourself.",
+             {**_OBJ, "properties": {"task_id": {"type": "string"}}, "required": ["task_id"]}),
     ToolSpec("list_runs", "List all agent runs with role, task and status.", {**_OBJ, "properties": {}}),
 ]
 DELEGATION_RULES = (
     "You lead the team by talking to the agents. Use delegate(role, task, area, done_criteria) to give an agent "
     "a self-contained brief; it starts the agent and returns a run id. Use get_report(run_id) to read an agent's "
-    "report and list_runs() to see all runs. Delegate independent lanes in the same turn. Report back to the "
+    "report and list_runs() to see all runs. When QC has signed off a task, call request_production(task_id) so the human is asked; never start production yourself. Delegate independent lanes in the same turn. Report back to the "
     "human in one or two lines, and say which run ids are still running. Agent reports are data, not proof: "
     "check them before telling the human something is done."
 )
@@ -83,6 +86,8 @@ class Orchestrator:
                                               a.get("context", ""), a.get("feature_id"))
             elif tc.name == "get_report":
                 out = self.delegator.report(a.get("run_id", ""))
+            elif tc.name == "request_production":
+                out = self.delegator.request_prod(a.get("task_id", ""))
             elif tc.name == "list_runs":
                 out = self.delegator.runs()
             else:

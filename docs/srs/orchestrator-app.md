@@ -13,18 +13,20 @@ The user ran a multi-agent development workflow by hand across many Claude Code 
 | D-1 | Standalone web app, not tied to Claude Code or Claude Desktop sessions. |
 | D-2 | LLM connection by **API key + base URL**; OpenAI-compatible and Anthropic-compatible at minimum; model chosen **per role**. "External providers" (delegating to another product/CLI/hosted agent) are hidden behind a **disabled feature flag**; the provider interface allows adding them later. |
 | D-3 | **MCP-ready**: an MCP client layer with per-role allow-lists exists from the start; the app works with zero MCP servers. Jira is the first intended server; GitHub, Slack etc. later. |
-| D-4 | Roles: orchestrator (sole voice to the human), architect (also BA), developer (N parallel), tester, reviewer, CI/CD, incident reporter, production support. |
+| D-4 | Roles: orchestrator (sole voice to the human), architect (also BA), developer 1 and developer 2, tester (QC), CI/CD, incident reporter, production support (L1 to L4). The separate reviewer role is replaced by developer peer review (D-17), amended by the user on 2026-11-07. |
 | D-5 | **Skills integration**: agents use skills from skill folders via a registry/loader; new skills are created where needed (section 6.4). |
 | D-6 | **Plugin packaging**: roles + skills + workflow + MCP config as one installable folder; the BookMeDoc workflow, generalised, ships as the default plugin `software-delivery`. |
 | D-7 | **Feature intake flow**: BA restates, explains impact, asks questions one at a time with a recommended default, writes an SRS, proposes a phased plan; human approves before any development. |
 | D-8 | The human prefers few questions: decide with the recommended default, record it as `[A]`, let them overrule later. Ask only on risky/irreversible actions (merge to main, production changes, credentials, destructive actions). |
-| D-9 | Reviewer may merge into the integration branch only under the stated merge conditions (section 6.7); never into `main`; revocable setting. |
+| D-9 | The peer-reviewing developer may merge into the integration branch only under the stated merge conditions (section 6.7); never into `main`; revocable setting. |
 | D-10 | **Versioned releases**: every change reaching `stage` carries a SemVer version and humanized release notes so the human can decide whether to merge to `main`; an `internal` branch collects smaller features and fixes first. |
 | D-11 | Build order is the milestone plan M0 to M10 (section 10), SRS first. |
 | D-12 | Target projects the agents build and deploy are both web apps and Windows applications (user, 2026-11-06). The CI/CD adapter interface gets two kinds: web deploy (Vercel first) and Windows package/release (build, installer or zip, GitHub Release asset). |
 | D-14 | Code host is pluggable: a Git-host interface (PR facts, retarget, merge, comments) with the existing `gh` client as one adapter and a Bitbucket Server / Data Center adapter (self-hosted, REST API 1.0, HTTP access token stored via the secrets store) as a second (user, 2026-11-06). The merge gate stays host-neutral; on Bitbucket the reviewer verdict can use native approve / needs-work as well as the first-line convention. |
 | D-15 | A Kubernetes deploy adapter is added next to Vercel and Windows release (user, 2026-11-06): deploy via kubectl/manifests or Helm against a configured cluster/namespace; production-config and credential changes stay GATED. Whether reviewer/deployer agents themselves also run as Kubernetes jobs is open (see Q-12). |
 | D-16 | The app is a reusable agent builder and deployer in the style of Microsoft Foundry, delivered as plugins (user, 2026-11-06): an agent is a packaged definition (role, instructions, skills, tool allow-list, model per role) that can be built in the UI, validated, exported as a plugin, and deployed (installed and run) in this or another orchestrator. Code-host (D-14), deploy targets (D-12, D-15) and agent packs (`software-delivery`) are all plugins behind interfaces. M9 (plugin system) moves ahead of the rest of M7. |
+| D-17 | **Team workflow** (user, 2026-11-07, `docs/design/team-workflow.md`): the Orchestrator assigns work to developer 1 or 2; each developer unit-tests first, then the other developer peer reviews the PR; the architect reviews next; CI/CD deploys to QC; the tester does UAT, system and integration testing and signs off; the Orchestrator checks the schedule or asks the human for production; production is signed off by the architect and the human; CI/CD deploys to production; the incident reporter watches the production test reports and hands incidents to production support (L1 to L4); minor fixes go to the owning developer and repeat the cycle. |
+| D-18 | Real deployment (Vercel, Windows, Kubernetes, anything else) is delivered as an in-app plugin and is built only when the user asks (2026-11-07). Until then "deploy" in the app records what it was told and changes nothing outside. |
 | D-13 | The orchestrator itself ships as a Windows desktop app (user, 2026-11-06): the existing FastAPI backend and Next.js UI wrapped in an Electron shell (proposed; Tauri is the alternative), backend bundled as a sidecar process, per-user data under %APPDATA%, installer via electron-builder. Added as milestone M11 after M10. |
 
 ## 3. Defaults chosen **[A]** (HANDOFF section 12, plus mine)
@@ -157,6 +159,23 @@ Priority: Must / Should / Could. Acceptance criteria are Given/When/Then, abbrev
 | FR-51 | Release notes follow the template (one-minute summary, what's new, what was fixed, behind the scenes, **needs your attention** (migrations, env/config, roles/tenant, breaking), how it was checked with counts and an explicit **not verified** list, risk and rollback, included PRs). Test results are taken only from recorded runs, never invented. | Must | Given no recorded test run, then the notes say "not verified", not a count. |
 | FR-52 | Never rewrite or delete a published tag; corrections ship as a new patch. Hotfix releases for critical/high bugs are allowed on their own. | Must | Given a request to move a published tag, then it is refused. |
 
+### 6.8b Release stages, production gate, incidents and the office view (user, 2026-11-07)
+| ID | Requirement | Priority | Acceptance |
+|---|---|---|---|
+| FR-53 | Each task has an owning developer; the other developer is its peer reviewer, and nobody approves their own work. After peer approval the stages run in order: architect review, deploy to QC, QC result, request production, human and architect approval, deploy to production. A stage cannot be skipped. | Must | Given a task that is not QC-signed-off, then requesting production is refused. |
+| FR-54 | A failure in architect review or QC returns the task to its owning developer. Production needs both the human's approval (UI only) and the architect's sign-off; the architect can never stand in for the human. | Must | Given only the architect's sign-off, then the task stays awaiting approval. |
+| FR-55 | Agents report their own step through a `pipeline` tool; the platform enforces which role may do which step (not the prompt). The Orchestrator asks the human for production through `request_production`, only after QC has signed off. | Must | Given the owner of a task, then another developer cannot report its work done. |
+| FR-56 | Incidents: a failing production test report raises one incident (never the same open one twice). Production support starts at L1 and escalates one level at a time: L3 goes to the architect, L4 asks the human and is the last level. A fix goes to the developer who owns the feature. | Must | Given an incident at L4, then a further escalation is refused. |
+| FR-57 | The Agents page shows the team as an animated office driven only by real events (state of each agent, recorded hand-offs, what is deployed to QC and production, open incidents); a table view shows the same data. | Should | Given no recorded hand-off, then nobody moves. |
+
+### 6.8c Future scope (user, 2026-11-08, `docs/design/future-scope.md`, not built)
+| ID | Requirement | Priority | Acceptance |
+|---|---|---|---|
+| FR-58 | Skills can be selected for a feature or task and are preloaded into the agent's prompt at run start, with an estimated token cost shown before the run. | Planned | Given a task with a selected skill, then the run starts with that skill's text already in context. |
+| FR-59 | Agent registry: an external agent registers with its capabilities and keeps a heartbeat; the Orchestrator lists live agents with what they can do and can delegate to them. A new agent waits for the human's approval, and what it returns is untrusted data. | Planned | Given an agent that stops its heartbeat, then it leaves the live list; given an unapproved agent, then no task is sent to it. |
+| FR-60 | Token limits: a limit per feature (and optionally per run or day), shown everywhere work is shown. At the limit the feature holds; the human can set a resume time or resume it, and held work continues then. | Planned | Given a feature at its limit, then no new run starts for it until it is resumed. |
+| FR-61 | Architecture profiles for token use (compaction, preloaded skills, model per role, brief size, step limit): a few ship with the app, the human can edit or add one, and the active one shows its estimated cost. | Planned | Given a changed profile, then the next run uses its settings. |
+
 ### 6.9 MCP and UI
 | ID | Requirement | Priority | Acceptance |
 |---|---|---|---|
@@ -214,6 +233,7 @@ Created in `.development/skills/<name>/SKILL.md` per skill-creator conventions, 
 | Q-9 | Keep `reference/` in the repo? | Yes, read-only, excluded from lint/tests; may be trimmed later. | Open, default [A] |
 | Q-11 | Release notes template: reuse the BookMeDoc one generalised (product name as a variable)? | Yes; ship it in the plugin's `templates/RELEASE_NOTES.md`. | Open, default [A] |
 | Q-12 | Kubernetes: is it only a deploy target, or should reviewer/deployer agents also run as Kubernetes jobs? | Deploy target only for now; agents stay local processes. | Open, default [A] |
+| Q-13 | Bitbucket: is a Bitbucket Server / Data Center adapter (D-14) wanted now? | Stays an open question; the GitHub adapter is the only one built. | Open, default [A] |
 | Q-10 | Should the first plugin be called `software-delivery` and BookMeDoc names stay out of it? | Yes, as in HANDOFF section 8. | Open, default [A] |
 
 No question is blocking for M1 except Q-2 (needed from M2). All others use their defaults.
