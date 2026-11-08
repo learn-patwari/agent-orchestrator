@@ -19,6 +19,7 @@ from .pipeline.flow import Flow, FlowError, tasks as tasks_repo
 from .pipeline.github import GhClient
 from .pipeline.merge_exec import MergeRefused, merge_batch
 from .pipeline.merge_gate import GateConfig
+from .pipeline.release import Release
 from .pipeline.worktrees import WorktreeError, WorktreeManager
 from .orchestrator import DelegationError, Orchestrator, check_workspace, default_root, status_table, team_check, team_snapshot
 from .scheduler import Scheduler, budget_percent_used
@@ -396,6 +397,17 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
         feature_id: str
         name: str
         stacked_on: str | None = None
+        owner: str = "developer_1"
+
+    class ArchitectIn(BaseModel):
+        approve: bool
+
+    class QcIn(BaseModel):
+        passed: int
+        failed: int
+
+    class ProdApproveIn(BaseModel):
+        by: str
 
     class DevDoneIn(BaseModel):
         pr_number: int
@@ -418,7 +430,7 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
 
     @app.post("/api/pipeline/tasks", dependencies=guard)
     def start_task(body: TaskIn):
-        return _flow_call(_flow().start, body.feature_id, body.name, body.stacked_on)
+        return _flow_call(_flow().start, body.feature_id, body.name, body.stacked_on, body.owner)
 
     @app.post("/api/pipeline/tasks/{tid}/dev-done", dependencies=guard)
     def task_dev_done(tid: str, body: DevDoneIn):
@@ -431,6 +443,31 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
     @app.post("/api/pipeline/tasks/{tid}/review", dependencies=guard)
     def task_review(tid: str, body: ReviewIn):
         return _flow_call(_flow().record_review, tid, body.body)
+
+    # release stages after peer review: architect, QC, the human's production gate
+    @app.post("/api/pipeline/tasks/{tid}/architect", dependencies=guard)
+    def task_architect(tid: str, body: ArchitectIn):
+        return _flow_call(Release().architect_review, tid, body.approve)
+
+    @app.post("/api/pipeline/tasks/{tid}/deploy-qc", dependencies=guard)
+    def task_deploy_qc(tid: str):
+        return _flow_call(Release().deploy_qc, tid)
+
+    @app.post("/api/pipeline/tasks/{tid}/qc", dependencies=guard)
+    def task_qc(tid: str, body: QcIn):
+        return _flow_call(Release().qc_result, tid, body.passed, body.failed)
+
+    @app.post("/api/pipeline/tasks/{tid}/request-prod", dependencies=guard)
+    def task_request_prod(tid: str):
+        return _flow_call(Release().request_prod, tid)
+
+    @app.post("/api/pipeline/tasks/{tid}/approve-prod", dependencies=guard)
+    def task_approve_prod(tid: str, body: ProdApproveIn):
+        return _flow_call(Release().approve_prod, tid, body.by)
+
+    @app.post("/api/pipeline/tasks/{tid}/deploy-prod", dependencies=guard)
+    def task_deploy_prod(tid: str):
+        return _flow_call(Release().deployed_prod, tid)
 
     @app.post("/api/pipeline/merge", dependencies=guard)
     def merge(body: MergeIn):
@@ -533,7 +570,10 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
                 hs.append({"id": "report-" + r["id"], "from": r["role"], "to": "orchestrator",
                            "label": r["status"], "at": r["finished_at"]})
         hs.sort(key=lambda h: h["at"])
-        return {"team": team(), "handoffs": hs[-40:]}
+        rel = Release()
+        pending = [{"id": x["id"], "name": x["name"], "approvals": x.get("approvals", [])}
+                   for x in tasks_repo.list() if x.get("release") == "awaiting_prod_approval"]
+        return {"team": team(), "handoffs": hs[-40:], "environments": rel.environments(), "pending_prod": pending}
 
     @app.post("/api/team/check", dependencies=guard)
     def team_check_endpoint():

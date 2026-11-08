@@ -1,16 +1,18 @@
 "use client";
 import { useEffect, useRef } from "react";
-import { Handoff, OfficeScene, TeamRow } from "../lib/office-scene";
+import { Environments, Handoff, OfficeScene, TeamRow } from "../lib/office-scene";
 
 /** The animated office. All state comes from the app (team rows and hand-offs); nothing here is scripted. */
 export default function Office({
   team,
   handoffs,
+  environments,
   paused,
   onSelect,
 }: {
   team: TeamRow[];
   handoffs: Handoff[];
+  environments: Environments;
   paused: boolean;
   onSelect: (role: string) => void;
 }) {
@@ -37,6 +39,9 @@ export default function Office({
   useEffect(() => {
     scene.current?.setHandoffs(handoffs);
   }, [handoffs]);
+  useEffect(() => {
+    scene.current?.setEnvironments(environments);
+  }, [environments]);
   useEffect(() => {
     if (scene.current) scene.current.paused = paused;
   }, [paused]);

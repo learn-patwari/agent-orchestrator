@@ -3,6 +3,8 @@
 // Look and layout follow the design in docs/design/office-view-mockup.html.
 
 export type TeamRow = { role: string; description?: string; model?: string | null; state: string; task: string | null; steps: number };
+export type Deployed = { task_id: string; name: string; version: string; at: number };
+export type Environments = { qc: Deployed | null; prod: Deployed | null };
 export type Handoff = { id: string; from: string; to: string; label: string; at: number };
 
 type Pt = [number, number];
@@ -104,6 +106,7 @@ export class OfficeScene {
   private queue: Handoff[] = [];
   private seen = new Set<string>();
   private primed = false;
+  private env: Environments = { qc: null, prod: null };
   private working = false;
   private raf = 0;
   private last = 0;
@@ -142,6 +145,9 @@ export class OfficeScene {
       p.state = toStatus(r.state); p.task = r.task;
     }
   }
+
+  /** What is deployed to QC and production. A rack lights up and shows its version only when the app says so. */
+  setEnvironments(env: Environments) { this.env = env; }
 
   /** Real hand-offs from the app. The first batch is history (not replayed); later ones send the office boy. */
   setHandoffs(list: Handoff[]) {
@@ -221,7 +227,7 @@ export class OfficeScene {
     px(14, 50, 44, 22, "#b9a4da"); px(16, 52, 40, 18, "#c8b7e4");
     px(150, 4, 64, 12, "#fff"); px(150, 4, 64, 1, "#adb5bd"); px(154, 8, 22, 1, "#4c6ef5"); px(154, 11, 34, 1, "#e8590c"); px(196, 8, 12, 5, "#51cf66");
     px(112, 100, 24, 12, "#2b2f3a"); px(114, 102, 20, 8, "#38d9a9"); px(116, 104, 10, 1, "#fff"); px(116, 106, 14, 1, "#fff");
-    this.rack(236, 92, "QC"); this.rack(274, 92, "PROD");
+    this.rack(236, 92, "QC", this.env.qc); this.rack(274, 92, "PROD", this.env.prod);
     [[84, 12], [300, 10], [300, 126], [86, 168], [8, 182], [196, 80]].forEach(([x, y]) => this.plant(x, y));
     px(122, 146, 80, 48, "#b7d6ac"); px(126, 150, 72, 40, "#c3e0b8");
     px(128, 158, 52, 12, "#e8590c"); px(128, 166, 52, 6, "#c2410c"); px(128, 158, 4, 14, "#c2410c"); px(176, 158, 4, 14, "#c2410c");
@@ -230,12 +236,14 @@ export class OfficeScene {
     px(52, 112, 40, 8, "#fff"); px(56, 115, 16, 1, "#e03131"); px(76, 115, 10, 1, "#495057");
     px(70, 176, 22, 14, "#7d5535"); px(72, 178, 18, 4, "#a47148"); px(72, 184, 18, 4, "#a47148");
   }
-  private rack(x: number, y: number, label: string) {
+  private rack(x: number, y: number, label: string, dep: Deployed | null) {
     const c = this.ctx;
     this.px(x, y, 18, 24, "#343a40"); this.px(x + 1, y + 1, 16, 22, "#495057");
-    for (let i = 0; i < 5; i++) { this.px(x + 3, y + 3 + i * 4, 12, 2, "#212529"); this.px(x + 4, y + 3 + i * 4, 2, 2, "#6c757d"); }
+    for (let i = 0; i < 5; i++) { this.px(x + 3, y + 3 + i * 4, 12, 2, "#212529"); this.px(x + 4, y + 3 + i * 4, 2, 2, dep ? "#51cf66" : "#6c757d"); }
     c.font = "bold 4.4px ui-monospace,Consolas,monospace"; c.fillStyle = "#212529"; c.textBaseline = "top";
     c.fillText(label, x + 9 - c.measureText(label).width / 2, y - 6);
+    const v = dep ? dep.version || "live" : "empty";
+    c.fillText(v, x + 9 - c.measureText(v).width / 2, y + 26);
   }
   private drawDesk(p: Person, time: number) {
     const [x, y] = p.desk, px = this.px.bind(this);

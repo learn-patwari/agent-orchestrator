@@ -3,14 +3,18 @@ import { useEffect, useState } from "react";
 import Office from "../../components/Office";
 import { Alert, Badge, Empty, PageHead } from "../../components/ui";
 import { api } from "../../lib/api";
-import { Handoff, STATUS_COLORS, seatLabel, toStatus } from "../../lib/office-scene";
+import { Environments, Handoff, STATUS_COLORS, seatLabel, toStatus } from "../../lib/office-scene";
 
 type Check = { role: string; responding: boolean; detail: string };
 type View = "office" | "table";
+type Pending = { id: string; name: string; approvals: string[] };
+const NO_ENV: Environments = { qc: null, prod: null };
 
 export default function Status() {
   const [rows, setRows] = useState<any[] | null>(null);
   const [handoffs, setHandoffs] = useState<Handoff[]>([]);
+  const [env, setEnv] = useState<Environments>(NO_ENV);
+  const [pending, setPending] = useState<Pending[]>([]);
   const [err, setErr] = useState("");
   const [checks, setChecks] = useState<Record<string, Check> | null>(null);
   const [checking, setChecking] = useState(false);
@@ -28,6 +32,8 @@ export default function Status() {
         .then((r) => {
           setRows(r.team);
           setHandoffs(r.handoffs);
+          setEnv(r.environments ?? NO_ENV);
+          setPending(r.pending_prod ?? []);
           setErr("");
         })
         .catch((e) => setErr(e.message));
@@ -46,6 +52,18 @@ export default function Status() {
       setErr(e.message);
     } finally {
       setChecking(false);
+    }
+  }
+
+  async function approveProd(id: string) {
+    setErr("");
+    try {
+      await api(`/pipeline/tasks/${id}/approve-prod`, "POST", { by: "human" });
+      const r = await api("/office");
+      setPending(r.pending_prod ?? []);
+      setEnv(r.environments ?? NO_ENV);
+    } catch (e: any) {
+      setErr(e.message);
     }
   }
 
@@ -75,11 +93,21 @@ export default function Status() {
         </Alert>
       )}
       {err && <Alert>{err}</Alert>}
+      {pending.map((p) => (
+        <Alert key={p.id} kind="warn">
+          <strong>Production needs your yes:</strong> deploy “{p.name}”? QC has signed off.{" "}
+          {p.approvals.includes("human") ? (
+            <span>You approved. Waiting for the architect&apos;s sign-off.</span>
+          ) : (
+            <button onClick={() => approveProd(p.id)}>Approve production deploy</button>
+          )}
+        </Alert>
+      ))}
       {rows && rows.length === 0 && <Empty title="No agents yet">Agents appear here once roles are loaded.</Empty>}
 
       {rows && rows.length > 0 && view === "office" && (
         <>
-          <Office team={rows} handoffs={handoffs} paused={paused} onSelect={setSelected} />
+          <Office team={rows} handoffs={handoffs} environments={env} paused={paused} onSelect={setSelected} />
           <div className="agent-chips" aria-label="Agent status">
             {rows.map((r) => (
               <button key={r.role} className="agent-chip" onClick={() => setSelected(r.role)} aria-pressed={selected === r.role}>
@@ -90,7 +118,7 @@ export default function Status() {
             ))}
           </div>
           <p className="muted" style={{ marginTop: 8 }}>
-            Everyone stays at their desk. The office boy walks only when the app records a real hand-off: a delegation or a finished run reporting back. The receptionist and the cat are just for fun.
+            Everyone stays at their desk. The office boy walks only when the app records a real hand-off: a delegation, a review, a deploy or a run reporting back. The QC and PROD racks light up with a version only when something is deployed there. The receptionist and the cat are just for fun.
           </p>
           <div className="card" aria-live="polite">
             {sel ? (
