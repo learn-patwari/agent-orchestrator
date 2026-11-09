@@ -150,6 +150,13 @@ class Runner:
 
     # -- main loop --
     def run(self, run_id: str) -> dict:
+        try:
+            return self._run(run_id)
+        finally:
+            if hasattr(self.tb, "close"):
+                self.tb.close()  # stops any MCP servers this run started
+
+    def _run(self, run_id: str) -> dict:
         lim = self.limits
         while True:
             run = runs.get(run_id)

@@ -70,8 +70,9 @@ def _run(argv: list[str], cwd: Path, timeout: int) -> str:
 
 class ToolBox:
     def __init__(self, ws: Workspace, skills: SkillRegistry | None = None, shell_timeout: int = 120, pipeline=None,
-                 incidents=None):
+                 incidents=None, mcp=None):
         self.ws, self.skills, self.shell_timeout = ws, skills, shell_timeout
+        self.mcp = mcp  # McpTools for the acting role: tools from the MCP servers that allow this role
         self.incidents = incidents  # callable bound to the acting role, see incidents.py
         self.pipeline = pipeline  # callable bound to the acting role, see pipeline/agent_tool.py
         obj = {"type": "object"}
@@ -88,10 +89,19 @@ class ToolBox:
         }
 
     def specs_for(self, allowed: list[str]) -> list[ToolSpec]:
-        return [s for t in allowed for s in self.specs.get(t, [])]
+        own = [s for t in allowed for s in self.specs.get(t, [])]
+        return own + (self.mcp.specs() if self.mcp else [])
+
+    def close(self) -> None:
+        if self.mcp:
+            self.mcp.close()
 
     def call(self, allowed: list[str], name: str, args: dict) -> str:
         """Dispatch a model-requested tool. Raises ToolError for refusals and failures."""
+        if name.startswith("mcp__"):  # allowed per MCP server (its role list), not by the role's own tool list
+            if self.mcp is None:
+                raise ToolError("MCP tools are not available in this run")
+            return self.mcp.call(name, args)
         if name not in allowed:
             raise ToolError(f"tool {name} is not allowed for this role")
         fn = getattr(self, f"_t_{name}", None)

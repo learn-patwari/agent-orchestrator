@@ -15,6 +15,7 @@ from . import auth, db, secrets_store
 from .ba import BAError
 from .agent_registry import AgentRegistry, RegistryError, key_ok, registry_key
 from .budget import Budget
+from .mcp import McpError, McpServers, McpTools, connect as mcp_connect
 from .profiles import BUILTIN as BUILTIN_PROFILES, ProfileError, Profiles
 from .features import Features, NotApproved, features as features_repo, require_approved
 from .inbox import Conflict, Inbox
@@ -336,7 +337,8 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
         reg = _registry()
         return rt.Runner(provider, mapping["model"], role,
                          ToolBox(Workspace(ws), reg, pipeline=PipelineTool(role.name, _agent_flow),
-                                 incidents=IncidentTool(role.name)), reg, Profiles().limits(),
+                                 incidents=IncidentTool(role.name), mcp=McpTools(role.name)), reg,
+                         Profiles().limits(),
                          provider_id=rec["id"], gate=lambda: (Budget().daily_gate(time.time(), registry.get_settings()["daily_token_limit"])
                                        or (Budget().gate(feature_id) if feature_id else None)),
                          preload=reg.estimate(_skill_names(feature_id, task_id))["bodies"])
@@ -372,6 +374,41 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
 
     app.state.restart_daily = _restart_daily
     app.state.restart_held = _restart_held
+
+    # ---- MCP servers (FR-44) ----
+    @app.get("/api/mcp/servers", dependencies=guard)
+    def mcp_list():
+        return McpServers().list()
+
+    @app.put("/api/mcp/servers/{name}", dependencies=guard)
+    def mcp_save(name: str, body: dict):
+        try:
+            return McpServers().save(name, body)
+        except McpError as e:
+            raise HTTPException(400, str(e))
+
+    @app.delete("/api/mcp/servers/{name}", dependencies=guard)
+    def mcp_delete(name: str):
+        if not McpServers().delete(name):
+            raise HTTPException(404, "not found")
+        return {"ok": True}
+
+    @app.post("/api/mcp/servers/{name}/test", dependencies=guard)
+    def mcp_test(name: str):
+        server = McpServers().get(name)
+        if server is None:
+            raise HTTPException(404, "not found")
+        try:
+            c = mcp_connect(server, app.state.http_client)
+        except McpError as e:
+            return {"ok": False, "error": secrets_store.redact(str(e)), "tools": []}
+        try:
+            tools = [{"name": t["name"], "description": t.get("description", "")} for t in c.list_tools()]
+            return {"ok": True, "error": None, "tools": tools}
+        except McpError as e:
+            return {"ok": False, "error": secrets_store.redact(str(e)), "tools": []}
+        finally:
+            c.close()
 
     @app.get("/api/budget", dependencies=guard)
     def budget_overview():
