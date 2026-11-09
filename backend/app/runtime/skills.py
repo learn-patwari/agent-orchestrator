@@ -58,6 +58,14 @@ class SkillRegistry:
         return [{"name": n, "description": skills[n].description, "source": skills[n].source}
                 for n in names if n in skills]
 
+    def estimate(self, names: list[str]) -> dict:
+        """What preloading these skills would cost: ~4 characters per token. Unknown names are reported, not hidden."""
+        bodies, unknown = [], []
+        for n in dict.fromkeys(names):
+            body = self.load_body(n)
+            (unknown if body is None else bodies).append(n if body is None else (n, body))
+        return {"tokens": sum(len(b) // 4 for _, b in bodies), "unknown": unknown, "bodies": bodies}
+
     def load_body(self, name: str) -> str | None:
         info = self.scan().get(name)
         if not info:

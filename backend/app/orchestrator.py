@@ -169,6 +169,15 @@ def check_workspace(path: str, roots: list[str]) -> Path:
     raise ValueError("workspace is outside the allowed workspace roots")
 
 
+def _feature_line(f: dict) -> str:
+    parts = [f["status"]]
+    if f.get("limit"):
+        parts.append(f"{f.get('used', 0)}/{f['limit']} tokens")
+        if f.get("held"):
+            parts.append("HELD at its token limit")
+    return f"{f['title']} [{', '.join(parts)}]"
+
+
 def team_snapshot(roles: dict, role_models: dict, provider_names: dict, status_rows: list[dict], open_items: int,
                   features: list[dict]) -> str:
     """Plain-text picture of the team for the Orchestrator's context. Facts only; liveness is not claimed."""
@@ -189,7 +198,7 @@ def team_snapshot(roles: dict, role_models: dict, provider_names: dict, status_r
         lines.append(f"- {name}: {desc} | model: {model} | state: {work}")
     lines.append(f"Inbox: {open_items} open item(s) waiting for the human.")
     if features:
-        lines.append("Features: " + "; ".join(f"{f['title']} [{f['status']}]" for f in features[:10]))
+        lines.append("Features: " + "; ".join(_feature_line(f) for f in features[:10]))
     else:
         lines.append("Features: none yet.")
     return "\n".join(lines)

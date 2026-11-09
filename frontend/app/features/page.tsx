@@ -79,6 +79,58 @@ function TokenLimit({ fid }: { fid: string }) {
   );
 }
 
+function FeatureSkills({ fid }: { fid: string }) {
+  const [d, setD] = useState<any>(null);
+  const [pick, setPick] = useState<string[]>([]);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    api(`/features/${fid}/skills`)
+      .then((x) => {
+        setD(x);
+        setPick(x.selected);
+      })
+      .catch((e) => setErr(e.message));
+  }, [fid]);
+
+  async function save() {
+    setErr("");
+    try {
+      const x = await api(`/features/${fid}/skills`, "PUT", { skills: pick });
+      setD(x);
+      setPick(x.selected);
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+  if (!d) return err ? <Alert>{err}</Alert> : null;
+  const est = d.available.filter((s: any) => pick.includes(s.name)).reduce((n: number, s: any) => n + s.tokens, 0);
+  return (
+    <>
+      <h3>Skills for this feature</h3>
+      <p className="muted">Chosen skills are loaded into the agent's prompt when its run starts, so it does not spend steps looking for them. About {est.toLocaleString()} tokens per run.</p>
+      {err && <Alert>{err}</Alert>}
+      {d.available.length === 0 ? (
+        <p className="muted">No skills found. Add a skills folder in Settings.</p>
+      ) : (
+        <ul className="plain">
+          {d.available.map((s: any) => (
+            <li key={s.name}>
+              <label>
+                <input type="checkbox" checked={pick.includes(s.name)} onChange={(e) => setPick(e.target.checked ? [...pick, s.name] : pick.filter((n) => n !== s.name))} />{" "}
+                {s.name} <span className="muted">~{s.tokens.toLocaleString()} tokens. {s.description}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+      <button type="button" className="secondary" onClick={save}>
+        Save skills
+      </button>
+    </>
+  );
+}
+
 export default function Features() {
   const [list, setList] = useState<any[]>([]);
   const [sel, setSel] = useState<any>(null);
@@ -161,6 +213,7 @@ export default function Features() {
             {(sel.status === "questioning" || sel.status === "srs_draft") && <Link href="/inbox">Open inbox</Link>}
           </p>
           {sel.status !== "rejected" && <TokenLimit key={sel.id} fid={sel.id} />}
+          {sel.status !== "rejected" && <FeatureSkills key={`s${sel.id}`} fid={sel.id} />}
           <h3>Understanding</h3>
           <p>{sel.analysis?.restatement}</p>
           <p className="muted">{sel.analysis?.why}</p>

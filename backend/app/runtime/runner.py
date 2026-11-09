@@ -32,6 +32,7 @@ class Limits:
     loop_repeat: int = 3  # identical failing tool call this many times in a row halts the run
     compact_at_chars: int = 60_000
     keep_recent: int = 6
+    max_output_tokens: int = 2048
 
 
 def wrap_untrusted(tool: str, text: str) -> str:
@@ -54,8 +55,11 @@ def load_log(run_id: str) -> list[dict]:
     return sorted((m for m in messages.list() if m.get("run_id") == run_id), key=lambda m: m["seq"])
 
 
-def system_prompt(role: Role, skills: SkillRegistry | None) -> str:
+def system_prompt(role: Role, skills: SkillRegistry | None, preload: list[tuple[str, str]] | None = None) -> str:
     parts = [role.body, POLICY]
+    if preload:  # skills the human chose for this feature: already loaded, no use_skill round trip needed
+        parts.append("Skills loaded for this task (follow them):\n" +
+                     "\n\n".join(f"## {n}\n{b}" for n, b in preload))
     if skills and role.skills:
         cat = skills.catalog(role.skills)
         if cat:
@@ -64,8 +68,9 @@ def system_prompt(role: Role, skills: SkillRegistry | None) -> str:
     return "\n\n".join(parts)
 
 
-def build_context(role: Role, skills: SkillRegistry | None, log: list[dict]) -> list[Message]:
-    ctx = [Message("system", system_prompt(role, skills))]
+def build_context(role: Role, skills: SkillRegistry | None, log: list[dict],
+                  preload: list[tuple[str, str]] | None = None) -> list[Message]:
+    ctx = [Message("system", system_prompt(role, skills, preload))]
     summary = next((m for m in reversed(log) if m["kind"] == "summary"), None)
     start = 0
     if summary:
@@ -81,9 +86,10 @@ def _chars(ctx: list[Message]) -> int:
 
 class Runner:
     def __init__(self, provider, model: str, role: Role, toolbox: ToolBox, skills: SkillRegistry | None = None,
-                 limits: Limits | None = None, provider_id: str = "", gate=None):
+                 limits: Limits | None = None, provider_id: str = "", gate=None, preload=None):
         self.p, self.model, self.role, self.tb = provider, model, role, toolbox
         self.skills, self.limits, self.provider_id = skills, limits or Limits(), provider_id
+        self.preload = preload or []
         self.gate = gate  # () -> reason or None; a reason puts the run on hold, it can continue later
 
     # -- persistence helpers --
@@ -163,13 +169,13 @@ class Runner:
                 return self._finish(run_id, "halted", "token_budget")
             if self.gate and (why := self.gate()):
                 return self._finish(run_id, "held", why)
-            ctx = build_context(self.role, self.skills, log)
+            ctx = build_context(self.role, self.skills, log, self.preload)
             self._compact(run_id, ctx, log)
             if len(load_log(run_id)) != len(log):
-                ctx = build_context(self.role, self.skills, load_log(run_id))
+                ctx = build_context(self.role, self.skills, load_log(run_id), self.preload)
             try:
                 c: Completion = self.p.complete(self.model, ctx, tools=self.tb.specs_for(self.role.tools) or None,
-                                                max_tokens=2048)
+                                                max_tokens=lim.max_output_tokens)
             except ProviderError as e:
                 return self._finish(run_id, "failed", f"{e.kind}: {e}")
             record_call(self.role.name, self.provider_id, self.model, c.usage, run_id)

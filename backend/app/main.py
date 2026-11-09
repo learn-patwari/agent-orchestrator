@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from . import auth, db, secrets_store
 from .ba import BAError
 from .budget import Budget
+from .profiles import BUILTIN as BUILTIN_PROFILES, ProfileError, Profiles
 from .features import Features, NotApproved, features as features_repo, require_approved
 from .inbox import Conflict, Inbox
 from .notify import Notifier
@@ -317,12 +318,12 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
         except ValueError as e:
             raise LaunchError(400, str(e))
         reg = _registry()
-        lim = registry.get_settings()["run_limits"]
         return rt.Runner(provider, mapping["model"], role,
                          ToolBox(Workspace(ws), reg, pipeline=PipelineTool(role.name, _agent_flow),
-                                 incidents=IncidentTool(role.name)), reg,
-                         rt.Limits(max_steps=lim["max_steps"], max_total_tokens=lim["max_total_tokens"]),
-                         provider_id=rec["id"], gate=(lambda: Budget().gate(feature_id)) if feature_id else None)
+                                 incidents=IncidentTool(role.name)), reg, Profiles().limits(),
+                         provider_id=rec["id"], gate=(lambda: Budget().gate(feature_id)) if feature_id else None,
+                         preload=reg.estimate((features_repo.get(feature_id) or {}).get("skills", []))["bodies"]
+                         if feature_id else None)
 
     def _restart_held(fid: str) -> list[str]:
         """After a resume: runs held for this feature continue from where they stopped."""
@@ -362,6 +363,67 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
         except ValueError as e:
             raise HTTPException(400, str(e))
         return Budget().status(fid)
+
+    def _profiles_view() -> dict:
+        p = Profiles()
+        return {"active": p.active()["name"], "profiles": p.list()}
+
+    @app.get("/api/profiles", dependencies=guard)
+    def get_profiles():
+        return _profiles_view()
+
+    @app.put("/api/profiles/{name}", dependencies=guard)
+    def save_profile(name: str, body: dict):
+        try:
+            Profiles().save(name, body)
+        except ProfileError as e:
+            raise HTTPException(400, str(e))
+        return _profiles_view()
+
+    @app.delete("/api/profiles/{name}", dependencies=guard)
+    def delete_profile(name: str):
+        try:
+            Profiles().delete(name)
+        except ProfileError as e:
+            raise HTTPException(400 if name in BUILTIN_PROFILES else 404, str(e))
+        return _profiles_view()
+
+    class ActiveIn(BaseModel):
+        name: str
+
+    @app.post("/api/profiles/active", dependencies=guard)
+    def set_active_profile(body: ActiveIn):
+        try:
+            Profiles().set_active(body.name)
+        except ProfileError as e:
+            raise HTTPException(404, str(e))
+        return _profiles_view()
+
+    def _skills_view(fid: str) -> dict:
+        reg = _registry()
+        selected = features_repo.get(fid).get("skills", [])
+        available = []
+        for s in reg.catalog():
+            available.append({**s, "tokens": reg.estimate([s["name"]])["tokens"]})
+        return {"selected": selected, "tokens": reg.estimate(selected)["tokens"], "available": available}
+
+    class SkillsIn(BaseModel):
+        skills: list[str]
+
+    @app.get("/api/features/{fid}/skills", dependencies=guard)
+    def get_feature_skills(fid: str):
+        _feature_or_404(fid)
+        return _skills_view(fid)
+
+    @app.put("/api/features/{fid}/skills", dependencies=guard)
+    def set_feature_skills(fid: str, body: SkillsIn):
+        _feature_or_404(fid)
+        names = list(dict.fromkeys(body.skills))
+        unknown = _registry().estimate(names)["unknown"]
+        if unknown:
+            raise HTTPException(400, f"unknown skill(s): {', '.join(unknown)}")
+        features_repo.update(fid, {"skills": names})
+        return _skills_view(fid)
 
     @app.post("/api/features/{fid}/resume", dependencies=guard)
     def resume_feature(fid: str):
@@ -627,7 +689,11 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
     # ---- orchestrator chat, status, notifications, schedules (M4) ----
     def _team_context(roles: dict) -> str:
         names = {p["id"]: p["name"] for p in providers_repo.list()}
-        feats = [{"title": f["title"], "status": f["status"]} for f in features_repo.list()]
+        feats = []
+        for f in features_repo.list():
+            b = Budget().status(f["id"])
+            feats.append({"title": f["title"], "status": f["status"], "limit": b["limit"], "used": b["used"],
+                          "held": b["held"]})
         return team_snapshot(roles, db.kv_get("role_models", {}), names, status_table(list(roles) or ROLES),
                              len(Inbox().list("open")), feats)
 

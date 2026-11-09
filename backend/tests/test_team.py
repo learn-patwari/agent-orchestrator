@@ -30,6 +30,16 @@ def test_snapshot_flags_roles_without_a_model_and_counts_open_items():
     assert "2 open item" in s
 
 
+def test_snapshot_shows_token_limits_and_which_features_are_held():
+    feats = [{"title": "Login", "status": "approved", "limit": 1000, "used": 400, "held": False},
+             {"title": "Pay", "status": "approved", "limit": 500, "used": 500, "held": True, "resume_at": None},
+             {"title": "Docs", "status": "ready"}]
+    s = team_snapshot(ROLES, MODELS, PROVIDERS, STATUS, open_items=0, features=feats)
+    assert "Login [approved, 400/1000 tokens]" in s
+    assert "Pay [approved, 500/500 tokens, HELD at its token limit]" in s
+    assert "Docs [ready]" in s
+
+
 def test_snapshot_never_claims_liveness_it_has_not_checked():
     s = team_snapshot(ROLES, MODELS, PROVIDERS, STATUS, open_items=0, features=[])
     assert "not verified live" in s.lower()

@@ -28,6 +28,7 @@ const GROUPS: { label: string; items: { href: string; name: string; icon: ReactN
     label: "Setup",
     items: [
       { href: "/providers", name: "Providers", icon: icon(<path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0V7zm6 10v5m-4 3h8" />) },
+      { href: "/profiles", name: "Token profiles", icon: icon(<path d="M12 3v18M5 8h14M7 13h10M9 18h6" />) },
       { href: "/settings", name: "Settings", icon: icon(<path d="M4 6h10m4 0h2M4 12h4m4 0h8M4 18h12m4 0h0M16 4v4M10 10v4M18 16v4" />) },
     ],
   },
