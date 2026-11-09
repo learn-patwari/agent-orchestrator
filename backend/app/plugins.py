@@ -6,10 +6,13 @@ executed from a plugin: it is data (role files, skill text, workflow YAML, templ
 """
 from __future__ import annotations
 
+import io
 import json
 import re
 import shutil
+import tempfile
 import time
+import zipfile
 from pathlib import Path
 
 import yaml
@@ -187,3 +190,37 @@ class Plugins:
                 if (base / "skills").is_dir():
                     sd.append(str(base / "skills"))
         return rd, sd
+
+    def build_agent(self, d: dict, roles: set[str], tools: set[str], skills: set[str]) -> dict:
+        """Agent builder: turn an agent definition into a one-role plugin, validate it, install it (disabled)."""
+        name = str(d.get("name", "")).strip()
+        if not NAME.match(name):
+            raise ValueError("the agent name uses lowercase letters, digits, - and _")
+        if not str(d.get("description", "")).strip() or not str(d.get("instructions", "")).strip():
+            raise ValueError("an agent needs a description and instructions")
+        meta = {"name": name, "description": str(d["description"]).strip(), "tools": list(d.get("tools") or []),
+                "skills": list(d.get("skills") or [])}
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / f"agent-{name}"
+            (base / "roles").mkdir(parents=True)
+            (base / "plugin.json").write_text(json.dumps({"name": f"agent-{name}", "version": "1.0.0",
+                                                          "description": meta["description"]}), encoding="utf-8")
+            (base / "roles" / f"{name}.md").write_text(
+                "---\n" + yaml.safe_dump(meta, sort_keys=False) + "---\n" + str(d["instructions"]).strip() + "\n",
+                encoding="utf-8")
+            problems = validate_plugin(base, roles, tools, skills)
+            if problems:
+                raise ValueError("; ".join(problems))
+            doc = self.install(str(base), roles, tools, skills)
+        return {**doc, "plugin": doc["name"]}
+
+    def export_zip(self, name: str) -> bytes:
+        if not plugins_repo.get(name):
+            raise KeyError(name)
+        buf = io.BytesIO()
+        base = _store() / name
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for f in sorted(base.rglob("*")):
+                if f.is_file():
+                    z.write(f, f.relative_to(base).as_posix())
+        return buf.getvalue()

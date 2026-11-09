@@ -396,6 +396,22 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
         except ValueError as e:
             raise HTTPException(400, str(e))
 
+    @app.post("/api/agents/build", dependencies=guard)
+    def agents_build(body: dict):
+        try:
+            return Plugins().build_agent(body, *_known())
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.get("/api/plugins/{name}/export", dependencies=guard)
+    def plugins_export(name: str):
+        try:
+            data = Plugins().export_zip(name)
+        except KeyError:
+            raise HTTPException(404, "not found")
+        return Response(data, media_type="application/zip",
+                        headers={"Content-Disposition": f'attachment; filename="{name}.zip"'})
+
     @app.post("/api/plugins/{name}/enable", dependencies=guard)
     def plugins_enable(name: str):
         try:

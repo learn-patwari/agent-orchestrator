@@ -135,3 +135,37 @@ def test_plugin_api_installs_enables_and_the_roles_and_skills_appear(authed, tmp
     assert "dba" not in {r["name"] for r in authed.get("/api/roles").json()}
     assert authed.delete("/api/plugins/dbtools").status_code == 200
     assert authed.delete("/api/plugins/dbtools").status_code == 404
+
+
+# ---- agent builder: define an agent, validate it, install it as a plugin, export it ----
+
+def test_agent_builder_creates_an_installed_plugin_with_the_role(authed):
+    body = {"name": "dba", "description": "Tunes databases", "instructions": "You tune databases.",
+            "tools": ["read_file", "list_dir"], "skills": []}
+    r = authed.post("/api/agents/build", json=body)
+    assert r.status_code == 200 and r.json()["problems"] == [] and r.json()["plugin"] == "agent-dba"
+    assert authed.post("/api/plugins/agent-dba/enable").json()["enabled"] is True
+    roles = {x["name"]: x for x in authed.get("/api/roles").json()}
+    assert roles["dba"]["description"] == "Tunes databases" and roles["dba"]["tools"] == ["read_file", "list_dir"]
+
+
+def test_agent_builder_refuses_unknown_tools_missing_skills_and_bad_names(authed):
+    base = {"name": "dba", "description": "d", "instructions": "x", "tools": ["read_file"], "skills": []}
+    bad_tool = authed.post("/api/agents/build", json={**base, "tools": ["flying"]})
+    assert bad_tool.status_code == 400 and "unknown tool flying" in bad_tool.json()["detail"]
+    assert authed.post("/api/agents/build", json={**base, "skills": ["ghost"]}).status_code == 400
+    assert authed.post("/api/agents/build", json={**base, "name": "Bad Name!"}).status_code == 400
+    assert authed.post("/api/agents/build", json={**base, "instructions": "  "}).status_code == 400
+    assert authed.get("/api/plugins").json()["installed"] == []  # nothing half-installed
+
+
+def test_a_plugin_can_be_exported_as_a_zip_and_installed_elsewhere(authed, tmp_path):
+    import io
+    import zipfile
+    authed.post("/api/agents/build", json={"name": "dba", "description": "d", "instructions": "You tune.",
+                                           "tools": ["read_file"], "skills": []})
+    r = authed.get("/api/plugins/agent-dba/export")
+    assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
+    names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+    assert "plugin.json" in names and "roles/dba.md" in names
+    assert authed.get("/api/plugins/ghost/export").status_code == 404

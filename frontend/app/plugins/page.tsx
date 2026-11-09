@@ -7,6 +7,23 @@ export default function Plugins() {
   const [d, setD] = useState<{ installed: any[]; available: any[] } | null>(null);
   const [path, setPath] = useState("");
   const [err, setErr] = useState("");
+  const [a, setA] = useState({ name: "", description: "", instructions: "", tools: "read_file, list_dir", skills: "" });
+  const [built, setBuilt] = useState("");
+
+  async function build(e: React.FormEvent) {
+    e.preventDefault();
+    setErr("");
+    setBuilt("");
+    const list = (t: string) => t.split(",").map((x) => x.trim()).filter(Boolean);
+    try {
+      const r = await api("/agents/build", "POST", { ...a, tools: list(a.tools), skills: list(a.skills) });
+      setBuilt(`Built as plugin ${r.plugin}. Enable it below to use the role.`);
+      setA({ name: "", description: "", instructions: "", tools: "read_file, list_dir", skills: "" });
+      await load();
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
 
   async function load() {
     try {
@@ -68,6 +85,24 @@ export default function Plugins() {
           <button type="submit">Install</button>
         </div>
       </form>
+      <form onSubmit={build} className="card">
+        <h2>Build an agent</h2>
+        <p className="muted">Describe a role. It is checked, then installed as a plugin you can enable, export and share.</p>
+        <label htmlFor="an">Name (lowercase, no spaces)</label>
+        <input id="an" name="name" autoComplete="off" value={a.name} onChange={(e) => setA({ ...a, name: e.target.value })} required />
+        <label htmlFor="ad">What it does</label>
+        <input id="ad" name="description" autoComplete="off" value={a.description} onChange={(e) => setA({ ...a, description: e.target.value })} required />
+        <label htmlFor="ai">Instructions</label>
+        <textarea id="ai" name="instructions" rows={5} autoComplete="off" value={a.instructions} onChange={(e) => setA({ ...a, instructions: e.target.value })} required />
+        <label htmlFor="at">Tools it may use (comma separated)</label>
+        <input id="at" name="tools" autoComplete="off" value={a.tools} onChange={(e) => setA({ ...a, tools: e.target.value })} />
+        <label htmlFor="as">Skills (comma separated, optional)</label>
+        <input id="as" name="skills" autoComplete="off" value={a.skills} onChange={(e) => setA({ ...a, skills: e.target.value })} />
+        <div className="row">
+          <button type="submit">Build agent</button>
+        </div>
+        {built && <Alert kind="ok">{built}</Alert>}
+      </form>
       <h2>Installed</h2>
       {(d?.installed ?? []).length === 0 ? (
         <Empty title="No plugins installed">Install one above.</Empty>
@@ -99,6 +134,9 @@ export default function Plugins() {
                     Enable
                   </button>
                 )}
+                <button type="button" className="secondary" onClick={() => { window.location.href = `/api/plugins/${p.name}/export`; }}>
+                  Export zip
+                </button>
                 <button type="button" className="secondary" onClick={() => act(() => api(`/plugins/${p.name}`, "DELETE"))}>
                   Remove
                 </button>
