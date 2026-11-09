@@ -22,7 +22,7 @@ const GROUPS: { label: string; items: { href: string; name: string; icon: ReactN
   },
   {
     label: "Team",
-    items: [{ href: "/status", name: "Agents", icon: icon(<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm13 10v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" />) }],
+    items: [{ href: "/registry", name: "External agents", icon: icon(<path d="M12 2v4m0 12v4M2 12h4m12 0h4M7 7l2 2m6 6l2 2m0-10l-2 2M9 15l-2 2M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" />) }, { href: "/status", name: "Agents", icon: icon(<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm13 10v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" />) }],
   },
   {
     label: "Setup",

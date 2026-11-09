@@ -6,12 +6,14 @@ import threading
 import time
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Response
+import httpx
+from fastapi import Depends, FastAPI, Header, HTTPException, Response
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from . import auth, db, secrets_store
 from .ba import BAError
+from .agent_registry import AgentRegistry, RegistryError, key_ok, registry_key
 from .budget import Budget
 from .profiles import BUILTIN as BUILTIN_PROFILES, ProfileError, Profiles
 from .features import Features, NotApproved, features as features_repo, require_approved
@@ -695,7 +697,85 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             feats.append({"title": f["title"], "status": f["status"], "limit": b["limit"], "used": b["used"],
                           "held": b["held"]})
         return team_snapshot(roles, db.kv_get("role_models", {}), names, status_table(list(roles) or ROLES),
-                             len(Inbox().list("open")), feats)
+                             len(Inbox().list("open")), feats,
+                             AgentRegistry().live() if registry.external_enabled() else [])
+
+    # ---- agent registry (FR-59): external agents announce themselves; the human approves them ----
+    class RegisterIn(BaseModel):
+        name: str
+        endpoint: str
+        capabilities: list[str] = []
+        description: str = ""
+        token: str | None = None
+
+    class HeartbeatIn(BaseModel):
+        name: str
+        token: str
+
+    class TaskToAgent(BaseModel):
+        task: str
+
+    @app.get("/api/registry/key", dependencies=guard)
+    def get_registry_key():
+        return {"key": registry_key()}
+
+    @app.post("/api/registry/register")
+    def registry_register(body: RegisterIn, x_registry_key: str | None = Header(None)):
+        if not key_ok(x_registry_key):
+            raise HTTPException(401, "missing or wrong registry key")
+        try:
+            out = AgentRegistry().register(body.name, body.endpoint, body.capabilities, body.description, body.token)
+        except RegistryError as e:
+            raise HTTPException(400, str(e))
+        if out["token"]:  # a first registration: the human decides whether this agent may join
+            Inbox().post("status", f"External agent wants to join: {out['agent']['name']}",
+                         f"Endpoint {out['agent']['endpoint']}. Can: {', '.join(out['agent']['capabilities']) or 'not stated'}. "
+                         "Approve or reject it on the Agents page.")
+        return {"status": out["agent"]["status"], "token": out["token"]}
+
+    @app.post("/api/registry/heartbeat")
+    def registry_heartbeat(body: HeartbeatIn):
+        try:
+            AgentRegistry().heartbeat(body.name, body.token)
+        except RegistryError as e:
+            raise HTTPException(401 if "token" in str(e) else 404, str(e))
+        return {"ok": True}
+
+    @app.get("/api/registry", dependencies=guard)
+    def registry_list():
+        return AgentRegistry().list()
+
+    def _registry_decision(fn, name: str):
+        try:
+            return fn(name)
+        except RegistryError as e:
+            raise HTTPException(404, str(e))
+
+    @app.post("/api/registry/{name}/approve", dependencies=guard)
+    def registry_approve(name: str):
+        return _registry_decision(AgentRegistry().approve, name)
+
+    @app.post("/api/registry/{name}/reject", dependencies=guard)
+    def registry_reject(name: str):
+        return _registry_decision(AgentRegistry().reject, name)
+
+    def _post_to_agent(url: str, payload: dict) -> str:
+        client = app.state.http_client or httpx.Client(timeout=30)
+        r = client.post(url, json=payload, timeout=30)
+        r.raise_for_status()
+        try:
+            return str(r.json().get("reply", r.text))
+        except ValueError:
+            return r.text
+
+    @app.post("/api/registry/{name}/task", dependencies=guard)
+    def registry_task(name: str, body: TaskToAgent):
+        try:
+            return AgentRegistry().send_task(name, body.task, _post_to_agent)
+        except RegistryError as e:
+            raise HTTPException(404 if "unknown" in str(e) else 409, str(e))
+        except httpx.HTTPError as e:
+            raise HTTPException(502, secrets_store.redact(f"the agent did not answer: {e}"))
 
     @app.get("/api/team", dependencies=guard)
     def team():
@@ -745,6 +825,14 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
 
         def __init__(self, roles: dict):
             self.roles = roles
+
+        def ask_agent(self, name, task):
+            try:
+                return AgentRegistry().send_task(name, task, _post_to_agent)
+            except RegistryError as e:
+                raise DelegationError(str(e))
+            except httpx.HTTPError as e:
+                raise DelegationError(secrets_store.redact(f"the agent did not answer: {e}"))
 
         def delegate(self, role, task, area, done_criteria, context, feature_id):
             task_label = next((ln[6:] for ln in task.splitlines() if ln.startswith("Task: ")), task)[:60]
