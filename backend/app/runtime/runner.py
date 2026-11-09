@@ -81,18 +81,20 @@ def _chars(ctx: list[Message]) -> int:
 
 class Runner:
     def __init__(self, provider, model: str, role: Role, toolbox: ToolBox, skills: SkillRegistry | None = None,
-                 limits: Limits | None = None, provider_id: str = ""):
+                 limits: Limits | None = None, provider_id: str = "", gate=None):
         self.p, self.model, self.role, self.tb = provider, model, role, toolbox
         self.skills, self.limits, self.provider_id = skills, limits or Limits(), provider_id
+        self.gate = gate  # () -> reason or None; a reason puts the run on hold, it can continue later
 
     # -- persistence helpers --
     def _append(self, run_id: str, m: Message, kind: str = "msg", **extra) -> None:
         seq = max([x["seq"] for x in load_log(run_id)] + [0]) + 1
         messages.create({**_to_doc(run_id, seq, m, kind), **extra})
 
-    def start(self, task: str, workspace: str) -> dict:
+    def start(self, task: str, workspace: str, feature_id: str | None = None) -> dict:
         run = runs.create({"role": self.role.name, "task": task, "workspace": workspace, "status": "running",
-                           "steps": 0, "tokens": 0, "error": None, "provider_id": self.provider_id, "model": self.model})
+                           "steps": 0, "tokens": 0, "error": None, "provider_id": self.provider_id, "model": self.model,
+                           "feature_id": feature_id})
         self._append(run["id"], Message("user", task))
         return run
 
@@ -159,6 +161,8 @@ class Runner:
                 return self._finish(run_id, "halted", "max_steps")
             if run["tokens"] >= lim.max_total_tokens:
                 return self._finish(run_id, "halted", "token_budget")
+            if self.gate and (why := self.gate()):
+                return self._finish(run_id, "held", why)
             ctx = build_context(self.role, self.skills, log)
             self._compact(run_id, ctx, log)
             if len(load_log(run_id)) != len(log):

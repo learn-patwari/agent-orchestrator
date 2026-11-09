@@ -12,6 +12,73 @@ const STEP: Record<string, string> = {
   rejected: "SRS rejected",
 };
 
+function TokenLimit({ fid }: { fid: string }) {
+  const [b, setB] = useState<any>(null);
+  const [limit, setLimit] = useState("");
+  const [at, setAt] = useState("");
+  const [err, setErr] = useState("");
+
+  async function load() {
+    try {
+      const d = await api(`/features/${fid}/budget`);
+      setB(d);
+      setLimit(d.limit ? String(d.limit) : "");
+      setAt(d.resume_at ? new Date(d.resume_at * 1000).toISOString().slice(0, 16) : "");
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+  useEffect(() => {
+    load();
+  }, [fid]);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setErr("");
+    try {
+      const resume = at ? new Date(at + "Z").getTime() / 1000 : null;
+      setB(await api(`/features/${fid}/budget`, "PUT", { limit: limit ? Number(limit) : null, resume_at: resume }));
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+  async function resume() {
+    setErr("");
+    try {
+      setB(await api(`/features/${fid}/resume`, "POST"));
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+  if (!b) return err ? <Alert>{err}</Alert> : null;
+  return (
+    <>
+      <h3>Token limit</h3>
+      <p className="muted">
+        {b.limit ? `${b.used.toLocaleString()} of ${b.limit.toLocaleString()} tokens used` : `${b.used.toLocaleString()} tokens used, no limit set`}
+      </p>
+      {b.held && (
+        <Alert kind="warn">
+          Held at the limit. Work continues when you press Resume{b.resume_at ? ` or at ${new Date(b.resume_at * 1000).toLocaleString()}` : ""}.
+        </Alert>
+      )}
+      {err && <Alert>{err}</Alert>}
+      <form onSubmit={save} className="row">
+        <label htmlFor="tl">Limit (tokens)</label>
+        <input id="tl" name="limit" type="number" min={1} inputMode="numeric" autoComplete="off" placeholder="no limit" value={limit} onChange={(e) => setLimit(e.target.value)} />
+        <label htmlFor="ta">Resume at (UTC, optional)</label>
+        <input id="ta" name="resume_at" type="datetime-local" autoComplete="off" value={at} onChange={(e) => setAt(e.target.value)} />
+        <button type="submit">Save limit</button>
+        {b.held && (
+          <button type="button" className="secondary" onClick={resume}>
+            Resume now
+          </button>
+        )}
+      </form>
+    </>
+  );
+}
+
 export default function Features() {
   const [list, setList] = useState<any[]>([]);
   const [sel, setSel] = useState<any>(null);
@@ -93,6 +160,7 @@ export default function Features() {
             <strong>Next:</strong> {STEP[sel.status] ?? sel.status}{" "}
             {(sel.status === "questioning" || sel.status === "srs_draft") && <Link href="/inbox">Open inbox</Link>}
           </p>
+          {sel.status !== "rejected" && <TokenLimit key={sel.id} fid={sel.id} />}
           <h3>Understanding</h3>
           <p>{sel.analysis?.restatement}</p>
           <p className="muted">{sel.analysis?.why}</p>

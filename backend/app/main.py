@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from . import auth, db, secrets_store
 from .ba import BAError
+from .budget import Budget
 from .features import Features, NotApproved, features as features_repo, require_approved
 from .inbox import Conflict, Inbox
 from .notify import Notifier
@@ -48,7 +49,7 @@ def run_job(job: dict) -> None:
         Notifier().send("reminder", job["name"], job["payload"].get("text", ""), key=f"job:{job['id']}")
 
 
-def scheduler_loop(stop: threading.Event, every: float = 30.0) -> None:
+def scheduler_loop(stop: threading.Event, every: float = 30.0, restart_held=None) -> None:
     """Local background loop: schedules run only while the app is running."""
     import time as _t
     while not stop.wait(every):
@@ -57,6 +58,12 @@ def scheduler_loop(stop: threading.Event, every: float = 30.0) -> None:
             Scheduler(st["pause_at_percent"]).tick(_t.time(), budget_percent_used(st["daily_budget_usd"]), run_job)
         except Exception:
             pass  # never let the loop die; failures of single jobs are recorded by tick()
+        try:  # features held at their token limit continue once the time the person set has come
+            for fid in Budget().tick(_t.time()):
+                if restart_held:
+                    restart_held(fid)
+        except Exception:
+            pass
 
 
 @asynccontextmanager
@@ -64,7 +71,8 @@ async def lifespan(app: FastAPI):
     db.init_db()
     stop = threading.Event()
     if not os.environ.get("AO_NO_SCHEDULER"):
-        threading.Thread(target=scheduler_loop, args=(stop,), daemon=True).start()
+        threading.Thread(target=scheduler_loop, args=(stop, 30.0, getattr(app.state, "restart_held", None)),
+                         daemon=True).start()
     yield
     stop.set()
 
@@ -287,9 +295,20 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             Notifier().send("budget_pause", "Daily LLM budget reached",
                             f"Used {pct:.0f}% of the daily cap; new runs are blocked.", key="budget_pause")
             raise LaunchError(429, "daily LLM budget reached; new runs are blocked")
-        mapping = db.kv_get("role_models", {}).get(role_name)
+        held = Budget().gate(feature_id)
+        if held:
+            raise LaunchError(429, f"this feature is {held}; press Resume once your window has cleared")
+        runner = _make_runner(role, ws, feature_id)
+        run = runner.start(task, str(ws), feature_id)
+        if wait:
+            return runner.run(run["id"])
+        threading.Thread(target=runner.run, args=(run["id"],), daemon=True).start()
+        return run
+
+    def _make_runner(role, ws, feature_id: str | None = None) -> rt.Runner:
+        mapping = db.kv_get("role_models", {}).get(role.name)
         if not mapping:
-            raise LaunchError(400, f"no model configured for role {role_name}")
+            raise LaunchError(400, f"no model configured for role {role.name}")
         rec = providers_repo.get(mapping["provider_id"])
         if not rec:
             raise LaunchError(400, "provider for this role no longer exists")
@@ -299,16 +318,57 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             raise LaunchError(400, str(e))
         reg = _registry()
         lim = registry.get_settings()["run_limits"]
-        runner = rt.Runner(provider, mapping["model"], role,
-                           ToolBox(Workspace(ws), reg, pipeline=PipelineTool(role_name, _agent_flow),
-                                   incidents=IncidentTool(role_name)), reg,
-                           rt.Limits(max_steps=lim["max_steps"], max_total_tokens=lim["max_total_tokens"]),
-                           provider_id=rec["id"])
-        run = runner.start(task, str(ws))
-        if wait:
-            return runner.run(run["id"])
-        threading.Thread(target=runner.run, args=(run["id"],), daemon=True).start()
-        return run
+        return rt.Runner(provider, mapping["model"], role,
+                         ToolBox(Workspace(ws), reg, pipeline=PipelineTool(role.name, _agent_flow),
+                                 incidents=IncidentTool(role.name)), reg,
+                         rt.Limits(max_steps=lim["max_steps"], max_total_tokens=lim["max_total_tokens"]),
+                         provider_id=rec["id"], gate=(lambda: Budget().gate(feature_id)) if feature_id else None)
+
+    def _restart_held(fid: str) -> list[str]:
+        """After a resume: runs held for this feature continue from where they stopped."""
+        roles = load_roles(registry.get_settings()["role_dirs"])
+        started = []
+        for r in rt.runs.list():
+            if r.get("feature_id") != fid or r["status"] != "held" or r["role"] not in roles:
+                continue
+            try:
+                runner = _make_runner(roles[r["role"]], r["workspace"], fid)
+            except LaunchError:
+                continue  # stays held; the person sees it on the runs page
+            rt.runs.update(r["id"], {"status": "running", "error": None, "finished_at": None})
+            if os.environ.get("AO_SYNC_RUNS") == "1":
+                runner.run(r["id"])
+            else:
+                threading.Thread(target=runner.run, args=(r["id"],), daemon=True).start()
+            started.append(r["id"])
+        return started
+
+    app.state.restart_held = _restart_held
+
+    @app.get("/api/features/{fid}/budget", dependencies=guard)
+    def get_budget(fid: str):
+        _feature_or_404(fid)
+        return Budget().status(fid)
+
+    class BudgetIn(BaseModel):
+        limit: int | None = None
+        resume_at: float | None = None
+
+    @app.put("/api/features/{fid}/budget", dependencies=guard)
+    def set_budget(fid: str, body: BudgetIn):
+        _feature_or_404(fid)
+        try:
+            Budget().set(fid, body.limit, body.resume_at)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return Budget().status(fid)
+
+    @app.post("/api/features/{fid}/resume", dependencies=guard)
+    def resume_feature(fid: str):
+        _feature_or_404(fid)
+        status = Budget().resume(fid)
+        _restart_held(fid)
+        return status
 
     @app.post("/api/runs", dependencies=guard)
     def start_run(body: RunIn):
