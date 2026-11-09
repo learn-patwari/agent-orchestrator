@@ -1,0 +1,12 @@
+# Stages in order. Each stage names the role that does it; the platform enforces who may do what.
+stages:
+  - {name: build, role: developer_1}
+  - {name: peer_review, role: developer_2}
+  - {name: architect_review, role: architect}
+  - {name: deploy_qc, role: cicd}
+  - {name: qc, role: tester}
+  - {name: request_production, role: orchestrator}
+  - {name: production_signoff, role: architect}
+  - {name: deploy_production, role: cicd}
+  - {name: production_tests, role: tester}
+  - {name: incident_response, role: production_support}

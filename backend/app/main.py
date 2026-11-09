@@ -15,6 +15,7 @@ from . import auth, db, secrets_store
 from .ba import BAError
 from .agent_registry import AgentRegistry, RegistryError, key_ok, registry_key
 from .budget import Budget
+from .plugins import Plugins
 from .mcp import McpError, McpServers, McpTools, connect as mcp_connect
 from .profiles import BUILTIN as BUILTIN_PROFILES, ProfileError, Profiles
 from .features import Features, NotApproved, features as features_repo, require_approved
@@ -374,6 +375,48 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
 
     app.state.restart_daily = _restart_daily
     app.state.restart_held = _restart_held
+
+    # ---- plugins (FR-20 to FR-22) ----
+    def _known() -> tuple[set, set, set]:
+        roles = set(load_roles(registry.get_settings()["role_dirs"]))
+        tools = set(ToolBox(Workspace(Path(".")), None).specs)
+        return roles, tools, set(_registry().scan())
+
+    class PluginIn(BaseModel):
+        path: str
+
+    @app.get("/api/plugins", dependencies=guard)
+    def plugins_list():
+        return {"installed": Plugins().list(), "available": Plugins().available()}
+
+    @app.post("/api/plugins/install", dependencies=guard)
+    def plugins_install(body: PluginIn):
+        try:
+            return Plugins().install(body.path, *_known())
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.post("/api/plugins/{name}/enable", dependencies=guard)
+    def plugins_enable(name: str):
+        try:
+            return Plugins().enable(name, *_known())
+        except KeyError:
+            raise HTTPException(404, "not found")
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+
+    @app.post("/api/plugins/{name}/disable", dependencies=guard)
+    def plugins_disable(name: str):
+        try:
+            return Plugins().disable(name)
+        except KeyError:
+            raise HTTPException(404, "not found")
+
+    @app.delete("/api/plugins/{name}", dependencies=guard)
+    def plugins_remove(name: str):
+        if not Plugins().remove(name):
+            raise HTTPException(404, "not found")
+        return {"ok": True}
 
     # ---- MCP servers (FR-44) ----
     @app.get("/api/mcp/servers", dependencies=guard)
