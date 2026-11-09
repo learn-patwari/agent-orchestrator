@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from .. import db
 from ..providers.base import Completion, Message, ProviderError, ToolCall
 from ..providers.registry import record_call
+from ..rules import RULES_FOR_ALL
 from .roles import Role
 from .skills import SkillRegistry
 from .tools import ToolBox, ToolError
@@ -56,7 +57,7 @@ def load_log(run_id: str) -> list[dict]:
 
 
 def system_prompt(role: Role, skills: SkillRegistry | None, preload: list[tuple[str, str]] | None = None) -> str:
-    parts = [role.body, POLICY]
+    parts = [role.body, POLICY, RULES_FOR_ALL]
     if preload:  # skills the human chose for this feature: already loaded, no use_skill round trip needed
         parts.append("Skills loaded for this task (follow them):\n" +
                      "\n\n".join(f"## {n}\n{b}" for n, b in preload))

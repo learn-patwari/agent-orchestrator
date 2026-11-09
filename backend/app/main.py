@@ -27,6 +27,7 @@ from .pipeline.merge_exec import MergeRefused, merge_batch
 from .pipeline.merge_gate import GateConfig
 from .incidents import IncidentError, IncidentTool, Incidents
 from .pipeline.agent_tool import PipelineTool
+from .pipeline.docs_gate import DocsGate, state as docs_state
 from .pipeline.release import Release
 from .pipeline.worktrees import WorktreeError, WorktreeManager
 from .orchestrator import DelegationError, Orchestrator, check_workspace, default_root, status_table, team_check, team_snapshot
@@ -41,7 +42,7 @@ from .runtime.tools import ToolBox, Workspace
 
 providers_repo = db.DocRepo("providers")
 ROLES = ["orchestrator", "architect", "developer_1", "developer_2", "tester", "cicd",
-         "incident_reporter", "production_support"]
+         "incident_reporter", "production_support", "technical_writer"]
 handoffs_repo = db.DocRepo("handoffs")
 
 
@@ -305,7 +306,7 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             Notifier().send("budget_pause", "Daily LLM budget reached",
                             f"Used {pct:.0f}% of the daily cap; new runs are blocked.", key="budget_pause")
             raise LaunchError(429, "daily LLM budget reached; new runs are blocked")
-        why = Budget().daily_gate(time.time(), st["daily_token_limit"])
+        why = Budget().window_gate(time.time()) or Budget().daily_gate(time.time(), st["daily_token_limit"])
         if why:
             raise LaunchError(429, why)
         held = Budget().gate(feature_id)
@@ -340,7 +341,8 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
                          ToolBox(Workspace(ws), reg, pipeline=PipelineTool(role.name, _agent_flow),
                                  incidents=IncidentTool(role.name), mcp=McpTools(role.name)), reg,
                          Profiles().limits(),
-                         provider_id=rec["id"], gate=lambda: (Budget().daily_gate(time.time(), registry.get_settings()["daily_token_limit"])
+                         provider_id=rec["id"], gate=lambda: (Budget().window_gate(time.time())
+                                       or Budget().daily_gate(time.time(), registry.get_settings()["daily_token_limit"])
                                        or (Budget().gate(feature_id) if feature_id else None)),
                          preload=reg.estimate(_skill_names(feature_id, task_id))["bodies"])
 
@@ -368,10 +370,16 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
         return _restart_runs(lambda r: r.get("feature_id") == fid)
 
     def _restart_daily() -> list[str]:
-        """Runs held by the daily token limit continue once the 24-hour window has room again."""
-        if Budget().daily_gate(time.time(), registry.get_settings()["daily_token_limit"]):
-            return []
-        return _restart_runs(lambda r: str(r.get("error", "")).startswith("daily token limit"))
+        """Runs held by the daily limit or the usage window continue once that guard has room again."""
+        now, b = time.time(), Budget()
+        daily_ok = not b.daily_gate(now, registry.get_settings()["daily_token_limit"])
+        window_ok = not b.window_gate(now)
+
+        def due(r):
+            e = str(r.get("error", ""))
+            return (e.startswith("daily token limit") and daily_ok and window_ok) or \
+                   (e.startswith("usage window") and window_ok and daily_ok)
+        return _restart_runs(due)
 
     app.state.restart_daily = _restart_daily
     app.state.restart_held = _restart_held
@@ -727,6 +735,44 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
     def task_qc(tid: str, body: QcIn):
         return _flow_call(Release().qc_result, tid, body.passed, body.failed)
 
+    class DocsCheckIn(BaseModel):
+        version: str
+        endpoints: list[str] = []
+        flagged: list[dict] = []
+        gaps: list[dict] = []
+
+    class DocsExceptionIn(BaseModel):
+        reason: str
+        by: str = "human"
+
+    @app.post("/api/pipeline/tasks/{tid}/docs-check", dependencies=guard)
+    def task_docs_check(tid: str, body: DocsCheckIn):
+        if tasks_repo.get(tid) is None:
+            raise HTTPException(404, "unknown task")
+        return _flow_call(DocsGate().run, tid, body.version, body.endpoints, body.flagged, body.gaps)
+
+    @app.post("/api/pipeline/tasks/{tid}/docs-exception", dependencies=guard)
+    def task_docs_exception(tid: str, body: DocsExceptionIn):
+        if tasks_repo.get(tid) is None:
+            raise HTTPException(404, "unknown task")
+        if body.by != "human":
+            raise HTTPException(403, "only the human can ship with a documented exception")
+        return _flow_call(DocsGate().exception, tid, body.reason, body.by)
+
+    class WindowIn(BaseModel):
+        percent: float
+        resets_at: float | None = None
+
+    @app.get("/api/usage-window", dependencies=guard)
+    def get_usage_window():
+        return Budget().window(time.time())
+
+    @app.put("/api/usage-window", dependencies=guard)
+    def put_usage_window(body: WindowIn):
+        if not 0 <= body.percent <= 100:
+            raise HTTPException(400, "percent must be between 0 and 100")
+        return Budget().set_window(body.percent, body.resets_at)
+
     @app.post("/api/pipeline/tasks/{tid}/request-prod", dependencies=guard)
     def task_request_prod(tid: str):
         return _flow_call(Release().request_prod, tid)
@@ -944,7 +990,9 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
         pending = [{"id": x["id"], "name": x["name"], "approvals": x.get("approvals", [])}
                    for x in tasks_repo.list() if x.get("release") == "awaiting_prod_approval"]
         return {"team": team(), "handoffs": hs[-40:], "environments": rel.environments(), "pending_prod": pending,
-                "open_incidents": len(Incidents().list(False))}
+                "docs_gates": [{"id": x["id"], "name": x["name"], "status": docs_state(x)} for x in tasks_repo.list()
+                               if x.get("docs_gate")],
+                "usage_window": Budget().window(time.time()), "open_incidents": len(Incidents().list(False))}
 
     @app.post("/api/team/check", dependencies=guard)
     def team_check_endpoint():

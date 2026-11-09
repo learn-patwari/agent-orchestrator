@@ -50,6 +50,7 @@ const SEATS: { id: string; label: string; desk: Pt; shirt: string; hair: string;
   { id: "tester", label: "tester", desk: [168, 86], shirt: "#ae3ec9", hair: "#d9a441" },
   { id: "incident_reporter", label: "incident reporter", desk: [14, 132], shirt: "#e8590c", hair: "#222" },
   { id: "production_support", label: "production support", desk: [58, 132], shirt: "#5c7cfa", hair: "#a0522d" },
+  { id: "technical_writer", label: "technical writer", desk: [120, 150], shirt: "#7048e8", hair: "#4a2c17" },
   { id: "receptionist", label: "receptionist", desk: [262, 146], shirt: "#e64980", hair: "#5c3317", dummy: true },
 ];
 const SKIN = ["#f1c7a0", "#e0a97c", "#c68642", "#8d5524"];

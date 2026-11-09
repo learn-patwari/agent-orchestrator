@@ -3,7 +3,7 @@ import pytest
 
 from app import db
 from app.inbox import Inbox
-from app.pipeline.flow import Flow, FlowError
+from app.pipeline.flow import Flow, FlowError, tasks
 from app.pipeline.release import Release
 from tests.test_flow import H1, flow, review  # noqa: F401  (flow is a fixture)
 
@@ -47,6 +47,7 @@ def test_full_release_to_production_needs_architect_qc_human_and_architect_sign_
     assert r.architect_review(t["id"], True)["release"] == "architect_approved"
     assert r.deploy_qc(t["id"])["release"] == "in_qc"
     assert r.environments()["qc"]["task_id"] == t["id"] and r.environments()["prod"] is None
+    tasks.update(t["id"], {"docs_gate": {"status": "PASS", "failed": []}})  # cicd ran the docs check
     assert r.qc_result(t["id"], passed=12, failed=0)["release"] == "qc_passed"
     t = r.request_prod(t["id"])
     assert t["release"] == "awaiting_prod_approval"
@@ -78,6 +79,7 @@ def test_only_the_human_and_the_architect_can_approve_production(flow):
     r = Release()
     r.architect_review(t["id"], True)
     r.deploy_qc(t["id"])
+    tasks.update(t["id"], {"docs_gate": {"status": "PASS", "failed": []}})
     r.qc_result(t["id"], 3, 0)
     r.request_prod(t["id"])
     with pytest.raises(FlowError, match="human or the architect"):

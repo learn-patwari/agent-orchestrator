@@ -5,6 +5,7 @@ import pytest
 
 from app import db
 from app.pipeline.agent_tool import PipelineTool
+from app.pipeline.flow import tasks
 from app.runtime.roles import DEFAULT_TOOLS
 from app.runtime.tools import ToolBox, ToolError, Workspace
 from tests.test_flow import H1, flow, review  # noqa: F401  (flow is a fixture)
@@ -54,6 +55,7 @@ def test_each_release_step_belongs_to_one_role(flow, tmp_path):
     assert act(ci, "deploy_qc", task_id=tid)["release"] == "in_qc"
     with pytest.raises(ToolError, match="tester"):
         act(ci, "qc_result", task_id=tid, passed=3, failed=0)
+    tasks.update(tid, {"docs_gate": {"status": "PASS", "failed": []}})
     assert act(qc, "qc_result", task_id=tid, passed=3, failed=0)["release"] == "qc_passed"
 
 
@@ -66,6 +68,7 @@ def test_the_architect_signs_off_production_but_can_never_stand_in_for_the_human
     r = Release()
     r.architect_review(t["id"], True)
     r.deploy_qc(t["id"])
+    tasks.update(t["id"], {"docs_gate": {"status": "PASS", "failed": []}})
     r.qc_result(t["id"], 3, 0)
     r.request_prod(t["id"])
     arch, ci = box(tmp_path, "architect", flow), box(tmp_path, "cicd", flow)

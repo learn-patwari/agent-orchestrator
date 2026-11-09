@@ -47,6 +47,32 @@ export default function Profiles() {
     }
   }
 
+  const [wPct, setWPct] = useState("");
+  const [wReset, setWReset] = useState("");
+  const [wMsg, setWMsg] = useState("");
+  useEffect(() => {
+    api("/usage-window")
+      .then((w) => {
+        if (w.percent != null) setWPct(String(w.percent));
+        if (w.resets_at) setWReset(new Date(w.resets_at * 1000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+      })
+      .catch(() => {});
+  }, []);
+
+  async function saveWindow(e: React.FormEvent) {
+    e.preventDefault();
+    setErr("");
+    try {
+      const w = await api("/usage-window", "PUT", {
+        percent: Number(wPct),
+        resets_at: wReset ? new Date(wReset).getTime() / 1000 : null,
+      });
+      setWMsg(w.blocked ? "Window is full: new work is stopped until the reset." : "Saved. Work can continue.");
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+
   async function act(fn: () => Promise<any>) {
     setErr("");
     try {
@@ -80,6 +106,18 @@ export default function Profiles() {
           <button type="submit">Save daily limit</button>
         </div>
         {dailyMsg && <Alert kind="ok">{dailyMsg}</Alert>}
+      </form>
+      <form onSubmit={saveWindow} className="card">
+        <h2>Usage window guard</h2>
+        <p className="muted">The app cannot read your provider&apos;s 5-hour window, so enter how full it is and when it resets. At 98% new work stops, running work holds, and one resume is scheduled for the reset.</p>
+        <label htmlFor="wp">Percent used</label>
+        <input id="wp" name="percent" type="number" min={0} max={100} step="any" inputMode="decimal" autoComplete="off" required value={wPct} onChange={(e) => setWPct(e.target.value)} />
+        <label htmlFor="wr">Resets at</label>
+        <input id="wr" name="resets" type="datetime-local" autoComplete="off" value={wReset} onChange={(e) => setWReset(e.target.value)} />
+        <div className="row">
+          <button type="submit">Save usage window</button>
+        </div>
+        {wMsg && <Alert kind="ok">{wMsg}</Alert>}
       </form>
       {d && (
         <ul className="plain" aria-label="Profiles">

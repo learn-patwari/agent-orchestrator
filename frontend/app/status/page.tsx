@@ -17,6 +17,8 @@ export default function Status() {
   const [pending, setPending] = useState<Pending[]>([]);
   const [incidents, setIncidents] = useState(0);
   const [budget, setBudget] = useState<any>(null);
+  const [docs, setDocs] = useState<{ id: string; name: string; status: string }[]>([]);
+  const [win, setWin] = useState<any>(null);
   const [err, setErr] = useState("");
   const [checks, setChecks] = useState<Record<string, Check> | null>(null);
   const [checking, setChecking] = useState(false);
@@ -37,6 +39,8 @@ export default function Status() {
           setEnv(r.environments ?? NO_ENV);
           setPending(r.pending_prod ?? []);
           setIncidents(r.open_incidents ?? 0);
+          setDocs(r.docs_gates ?? []);
+          setWin(r.usage_window ?? null);
           setErr("");
         })
         .catch((e) => setErr(e.message));
@@ -112,6 +116,17 @@ export default function Status() {
       {budget?.features.filter((f: any) => f.held).map((f: any) => (
         <Alert key={f.id} kind="warn">
           “{f.title}” is held at its token limit. Resume it on the Features page once your window has cleared.
+        </Alert>
+      ))}
+      {win?.blocked && (
+        <Alert kind="warn">
+          Usage window is at {win.percent}%. New work is stopped and running work is held until it resets
+          {win.resets_at ? ` at ${new Date(win.resets_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}; it then continues by itself.
+        </Alert>
+      )}
+      {docs.filter((d) => d.status === "FAIL" || d.status === "MISSING").map((d) => (
+        <Alert key={d.id} kind="warn">
+          “{d.name}” is waiting for the docs gate. The technical writer fixes the documents, then ci/cd runs the check again.
         </Alert>
       ))}
       {incidents > 0 && (

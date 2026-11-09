@@ -112,9 +112,9 @@ Priority: Must / Should / Could. Acceptance criteria are Given/When/Then, abbrev
 ### 6.5 Plugins
 | ID | Requirement | Priority | Acceptance |
 |---|---|---|---|
-| FR-20 | Plugin = folder `plugins/<name>/` with `plugin.json`, `roles/*.md`, `skills/`, `workflows/*.yaml`, `templates/*.md`, optional `mcp.json` (no secrets), `policies.md`. | Must | Given the folder, then it loads; missing `plugin.json` is rejected with a reason. |
-| FR-21 | Validate on load: manifest schema, role frontmatter, role->skill references exist, role tool lists known, workflow stages reference known roles. Install/remove/enable from the UI. | Must | Given a role naming a missing skill, then validation fails with file and line context and the plugin stays disabled. |
-| FR-22 | Ship `plugins/software-delivery` = the BookMeDoc workflow generalised: product-specific roles removed, Vercel specifics moved to the CI/CD adapter and quota table. | Must | Given a fresh install, then the default workflow runs end to end on a demo repo. |
+| FR-20 | Plugin = folder `plugins/<name>/` with `plugin.json`, `roles/*.md`, `skills/`, `workflows/*.yaml`, `templates/*.md`, optional `mcp.json` (no secrets), `policies.md`. | Must · Built (`app/plugins.py`) | Given the folder, then it loads; missing `plugin.json` is rejected with a reason. |
+| FR-21 | Validate on load: manifest schema, role frontmatter, role->skill references exist, role tool lists known, workflow stages reference known roles. Install/remove/enable from the UI. | Must · Built: errors name file and line; Plugins page installs, enables, disables, removes | Given a role naming a missing skill, then validation fails with file and line context and the plugin stays disabled. |
+| FR-22 | Ship `plugins/software-delivery` = the BookMeDoc workflow generalised: product-specific roles removed, Vercel specifics moved to the CI/CD adapter and quota table. | Must · Built: `plugins/software-delivery` (workflow, release-notes template, policies); roles come from the built-in set | Given a fresh install, then the default workflow runs end to end on a demo repo. |
 
 ### 6.6 Orchestrator, inbox, scheduler, budgets
 | ID | Requirement | Priority | Acceptance |
@@ -179,8 +179,8 @@ Priority: Must / Should / Could. Acceptance criteria are Given/When/Then, abbrev
 ### 6.9 MCP and UI
 | ID | Requirement | Priority | Acceptance |
 |---|---|---|---|
-| FR-44 | MCP client (stdio and HTTP) with per-role tool allow-lists, server config UI, secrets by reference, test-connection; ships with none required. | Must (M8) | Given a configured server, then its tools appear only for roles that allow them. |
-| FR-45 | Jira as the first example integration through MCP, mapping to the bug-tracker abstraction. | Should (M8) | Given a Jira MCP server, then bugs can sync as tracker items. |
+| FR-44 | MCP client (stdio and HTTP) with per-role tool allow-lists, server config UI, secrets by reference, test-connection; ships with none required. | Must (M8) · Built (`app/mcp.py`, MCP page); stdio and http, per-role allow-lists, secrets by reference, test connection | Given a configured server, then its tools appear only for roles that allow them. |
+| FR-45 | Jira as the first example integration through MCP, mapping to the bug-tracker abstraction. | Should (M8) · Not built: Jira can be added today as an MCP server; no tracker mapping yet | Given a Jira MCP server, then bugs can sync as tracker items. |
 | FR-46 | UI pages: Chat; Feature board (intake, SRS, plan, tasks by lane); Agents (live status); PRs/merge queue; Runs & logs; Skills & Plugins; Providers & MCP; Budgets & settings; Assumptions. | Must | Given each page, then it renders real data and works at laptop width with keyboard access. |
 
 ## 7. Non-functional requirements

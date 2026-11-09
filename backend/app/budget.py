@@ -11,6 +11,9 @@ import time
 
 from . import db
 from .notify import Notifier
+from .scheduler import Scheduler
+
+WINDOW_STOP = 98.0  # percent of the 5-hour window at which new work stops
 
 features = db.DocRepo("features")
 runs = db.DocRepo("runs")
@@ -85,6 +88,29 @@ class Budget:
             s = self.status(f["id"])
             feats.append({"id": f["id"], "title": f.get("title", f["id"]), **s})
         return {"daily": self.daily(now, daily_limit), "features": feats}
+
+    def set_window(self, percent: float, resets_at: float | None) -> dict:
+        """The person enters how full the provider's window is (the app cannot read it) and when it resets."""
+        s = db.kv_get("usage_window", {})
+        s.update({"percent": percent, "resets_at": resets_at})
+        if percent >= WINDOW_STOP and resets_at and s.get("scheduled_for") != resets_at:
+            Scheduler().add("Usage window reset: work resumes",
+                            {"kind": "reminder", "text": "The usage window has reset; held work continues."}, resets_at)
+            s["scheduled_for"] = resets_at  # one resume per window, however often the figure is updated
+        db.kv_set("usage_window", s)
+        return self.window(time.time())
+
+    def window(self, now: float) -> dict:
+        s = db.kv_get("usage_window", {})
+        return {"percent": s.get("percent"), "resets_at": s.get("resets_at"), "blocked": self.window_gate(now) is not None}
+
+    def window_gate(self, now: float) -> str | None:
+        s = db.kv_get("usage_window", {})
+        pct, reset = s.get("percent"), s.get("resets_at")
+        if pct is None or pct < WINDOW_STOP or (reset is not None and now >= reset):
+            return None
+        when = time.strftime("%H:%M", time.localtime(reset)) if reset else "the reset"
+        return f"usage window at {pct:g}% (stop at {WINDOW_STOP:g}%); work resumes after the reset at {when}"
 
     def tick(self, now: float) -> list[str]:
         """Resume the held features whose resume time has come. Returns their ids."""

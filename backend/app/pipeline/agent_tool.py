@@ -11,17 +11,18 @@ from typing import Callable
 
 from ..runtime.tools import ToolError
 from .flow import Flow, FlowError, tasks
+from .docs_gate import DocsGate, state as docs_state
 from .release import Release
 
 ACTIONS = ("list", "dev_done", "tests", "review", "architect_review", "deploy_qc", "qc_result",
-           "approve_prod", "deploy_prod", "prod_tests")
+           "approve_prod", "deploy_prod", "prod_tests", "docs_check")
 RELEASE_OWNER = {"architect_review": "architect", "approve_prod": "architect", "deploy_qc": "cicd",
-                 "deploy_prod": "cicd", "qc_result": "tester", "prod_tests": "tester"}
+                 "deploy_prod": "cicd", "qc_result": "tester", "prod_tests": "tester", "docs_check": "cicd"}
 FIELDS = ("id", "name", "owner", "reviewer", "status", "release", "approvals", "pr_number", "head_sha")
 
 
 def summary(t: dict) -> dict:
-    return {k: t.get(k) for k in FIELDS}
+    return {**{k: t.get(k) for k in FIELDS}, "docs_gate": docs_state(t) if t.get("docs_gate") else None}
 
 
 class PipelineTool:
@@ -30,7 +31,8 @@ class PipelineTool:
 
     def __call__(self, action: str, task_id: str | None = None, pr_number: int | None = None,
                  head_sha: str | None = None, passed: int | None = None, failed: int | None = None,
-                 area: str = "", body: str = "", approve: bool | None = None) -> str:
+                 area: str = "", body: str = "", approve: bool | None = None, version: str = "",
+                 endpoints: list | None = None, flagged: list | None = None, gaps: list | None = None) -> str:
         if action not in ACTIONS:
             raise ToolError(f"unknown pipeline action {action}; use one of {', '.join(ACTIONS)}")
         if action == "list":
@@ -41,7 +43,8 @@ class PipelineTool:
         if t is None:
             raise ToolError(f"unknown task {task_id}")
         try:
-            return json.dumps(summary(self._act(action, t, pr_number, head_sha, passed, failed, area, body, approve)))
+            return json.dumps(summary(self._act(action, t, pr_number, head_sha, passed, failed, area, body, approve,
+                                                 version, endpoints, flagged, gaps)))
         except FlowError as e:
             raise ToolError(str(e))
 
@@ -49,11 +52,17 @@ class PipelineTool:
         if self.actor != role:
             raise ToolError(f"only the {role} role can do this step")
 
-    def _act(self, action, t, pr_number, head_sha, passed, failed, area, body, approve) -> dict:
+    def _act(self, action, t, pr_number, head_sha, passed, failed, area, body, approve, version="",
+             endpoints=None, flagged=None, gaps=None) -> dict:
         tid = t["id"]
         if action in RELEASE_OWNER:
             self._need(RELEASE_OWNER[action])
             r = Release()
+            if action == "docs_check":
+                if not version:
+                    raise ToolError("version is required")
+                DocsGate().run(tid, version, endpoints, flagged, gaps)
+                return tasks.get(tid)
             if action == "architect_review":
                 if approve is None:
                     raise ToolError("approve (true or false) is required")

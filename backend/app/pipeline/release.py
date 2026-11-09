@@ -12,6 +12,8 @@ import time
 from .. import db
 from ..inbox import Inbox
 from . import handoffs
+from ..quota import QuotaBlocked, QuotaGuard
+from .docs_gate import DocsGate
 from .flow import FlowError, tasks
 
 APPROVERS = ("human", "architect")
@@ -32,7 +34,19 @@ class Release:
         env = db.kv_get("environments", {})
         return {"qc": env.get("qc"), "prod": env.get("prod")}
 
+    def _vercel(self) -> QuotaGuard:
+        g = QuotaGuard("vercel_hobby")  # stops at 70% of the daily deployment limit, tells the human once
+        try:
+            g.check("deployments_per_day")
+            g.check("deployments_per_hour")
+        except QuotaBlocked as e:
+            raise FlowError(f"Vercel limit guard: {e}")
+        return g
+
     def _deploy(self, name: str, t: dict) -> None:
+        g = self._vercel()  # a refused deploy changes nothing and is not counted
+        g.record("deployments_per_day")
+        g.record("deployments_per_hour")
         env = db.kv_get("environments", {})
         env[name] = {"task_id": t["id"], "name": t["name"], "version": (t.get("head_sha") or "")[:7],
                      "at": time.time()}
@@ -59,6 +73,7 @@ class Release:
         t = self._task(tid, "in_qc")
         if failed or passed <= 0:
             return self._back_to_owner(t, "tester", f"QC failed: {failed} failing")
+        DocsGate().require(t)  # no sign-off before the docs gate is PASS (or the human's exception)
         handoffs.record("tester", "orchestrator", "QC signed off")
         return tasks.update(tid, {"release": "qc_passed", "qc": {"passed": passed, "failed": failed}})
 

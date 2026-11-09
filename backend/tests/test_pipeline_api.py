@@ -131,6 +131,8 @@ def test_release_over_api_shows_in_the_office_feed_and_waits_for_the_human(api):
     assert api.post(f"{base}/architect", json={"approve": True}).json()["release"] == "architect_approved"
     assert api.post(f"{base}/deploy-qc").json()["release"] == "in_qc"
     assert api.get("/api/office").json()["environments"]["qc"]["version"] == H1[:7]
+    from app.pipeline.flow import tasks
+    tasks.update(base.rsplit("/", 1)[1], {"docs_gate": {"status": "PASS", "failed": []}})
     assert api.post(f"{base}/qc", json={"passed": 6, "failed": 0}).json()["release"] == "qc_passed"
     assert api.post(f"{base}/request-prod").json()["release"] == "awaiting_prod_approval"
     feed = api.get("/api/office").json()
