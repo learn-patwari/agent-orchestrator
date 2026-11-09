@@ -42,7 +42,8 @@ ORCH_TOOLS = [
                  "task": {"type": "string"}, "area": {"type": "string", "description": "Files or area to work in."},
                  "done_criteria": {"type": "array", "items": {"type": "string"}},
                  "context": {"type": "string"},
-                 "feature_id": {"type": "string", "description": "Required for the developer: an approved feature."}},
+                 "feature_id": {"type": "string", "description": "Required for the developer: an approved feature."},
+                 "task_id": {"type": "string", "description": "Optional: the pipeline task, so its chosen skills are preloaded."}},
               "required": ["role", "task", "area", "done_criteria"]}),
     ToolSpec("get_report", "Read the status and final report of one run.",
              {**_OBJ, "properties": {"run_id": {"type": "string"}}, "required": ["run_id"]}),
@@ -86,8 +87,9 @@ class Orchestrator:
                     raise ValueError("a brief needs done criteria")
                 task = build_brief(a.get("role", ""), a.get("task", ""), a.get("area", ""),
                                    list(a["done_criteria"]), a.get("context", ""))
+                extra = {"task_id": a["task_id"]} if a.get("task_id") else {}
                 out = self.delegator.delegate(a.get("role", ""), task, a.get("area", ""), list(a["done_criteria"]),
-                                              a.get("context", ""), a.get("feature_id"))
+                                              a.get("context", ""), a.get("feature_id"), **extra)
             elif tc.name == "get_report":
                 out = self.delegator.report(a.get("run_id", ""))
             elif tc.name == "request_production":

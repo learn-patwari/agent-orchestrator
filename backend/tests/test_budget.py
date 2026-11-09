@@ -127,3 +127,60 @@ def test_budget_api_validates_and_reports(authed):
     ok = authed.put(f"/api/features/{fid}/budget", json={"limit": 5000, "resume_at": 123.0}).json()
     assert ok["limit"] == 5000 and ok["resume_at"] == 123.0
     assert authed.post("/api/features/zzz/resume").status_code == 404
+
+
+# ---- per-day token limit and the overview ----
+
+def call(tokens, at):
+    db.DocRepo("llm_calls").create({"role": "developer", "input_tokens": tokens, "output_tokens": 0, "at": at})
+
+
+def test_daily_limit_counts_only_the_last_24_hours_and_lifts_by_itself():
+    b = Budget()
+    now = 1_000_000.0
+    assert b.daily(now, None)["limit"] is None and b.daily_gate(now, None) is None
+    call(800, now - 100)
+    call(5000, now - 90_000)  # older than a day: not counted
+    d = b.daily(now, 1000)
+    assert d["used"] == 800 and d["percent"] == 80.0
+    assert b.daily_gate(now, 1000) is None
+    call(300, now - 10)
+    assert "daily token limit" in b.daily_gate(now, 1000)
+    assert b.daily_gate(now + 86_400, 1000) is None  # the window moved on, no manual resume needed
+
+
+def test_overview_and_the_daily_limit_block_new_runs(authed, tmp_path):
+    import time
+    from tests.test_runs_api import setup_role
+    pid = setup_role(authed, tmp_path)
+    authed.put("/api/role-models/developer", json={"provider_id": pid, "model": "m"})
+    fid = db.DocRepo("features").create({"title": "Pay", "status": "approved"})["id"]
+    authed.put(f"/api/features/{fid}/budget", json={"limit": 900})
+    assert authed.put("/api/settings", json={"daily_token_limit": 1000}).status_code == 200
+    call(1000, time.time())
+    ov = authed.get("/api/budget").json()
+    assert ov["daily"]["limit"] == 1000 and ov["daily"]["used"] == 1000 and ov["daily"]["percent"] == 100.0
+    assert [(f["title"], f["limit"]) for f in ov["features"]] == [("Pay", 900)]
+    r = authed.post("/api/runs", json={"role": "developer", "task": "go", "workspace": str(tmp_path),
+                                       "feature_id": fid})
+    assert r.status_code == 429 and "daily token limit" in r.json()["detail"]
+
+
+def test_a_run_held_by_the_daily_limit_continues_when_the_window_has_room(authed, tmp_path, monkeypatch):
+    import json
+    from tests.test_runs_api import completion, setup_role
+    monkeypatch.setenv("AO_SYNC_RUNS", "1")
+    pid = setup_role(authed, tmp_path)
+    authed.put("/api/role-models/developer", json={"provider_id": pid, "model": "m"})
+    fid = db.DocRepo("features").create({"title": "f", "status": "approved"})["id"]
+    authed.put("/api/settings", json={"daily_token_limit": 10})
+    step = [{"id": "t1", "type": "function", "function": {"name": "list_dir", "arguments": "{}"}}]
+    replies = iter([completion("", step), completion("", step), completion("finished")])
+    authed.upstream.handler = lambda req: next(replies)
+    run = authed.post("/api/runs", json={"role": "developer", "task": "go", "workspace": str(tmp_path),
+                                         "wait": True, "feature_id": fid}).json()
+    assert run["status"] == "held" and run["error"].startswith("daily token limit")
+    assert authed.app.state.restart_daily() == []  # still over the limit: nothing moves
+    authed.put("/api/settings", json={"daily_token_limit": None})
+    assert authed.app.state.restart_daily() == [run["id"]]
+    assert authed.get(f"/api/runs/{run['id']}").json()["status"] == "done"

@@ -52,7 +52,7 @@ def run_job(job: dict) -> None:
         Notifier().send("reminder", job["name"], job["payload"].get("text", ""), key=f"job:{job['id']}")
 
 
-def scheduler_loop(stop: threading.Event, every: float = 30.0, restart_held=None) -> None:
+def scheduler_loop(stop: threading.Event, every: float = 30.0, restart_held=None, restart_daily=None) -> None:
     """Local background loop: schedules run only while the app is running."""
     import time as _t
     while not stop.wait(every):
@@ -65,6 +65,8 @@ def scheduler_loop(stop: threading.Event, every: float = 30.0, restart_held=None
             for fid in Budget().tick(_t.time()):
                 if restart_held:
                     restart_held(fid)
+            if restart_daily:
+                restart_daily()
         except Exception:
             pass
 
@@ -74,7 +76,8 @@ async def lifespan(app: FastAPI):
     db.init_db()
     stop = threading.Event()
     if not os.environ.get("AO_NO_SCHEDULER"):
-        threading.Thread(target=scheduler_loop, args=(stop, 30.0, getattr(app.state, "restart_held", None)),
+        threading.Thread(target=scheduler_loop, args=(stop, 30.0, getattr(app.state, "restart_held", None),
+                                           getattr(app.state, "restart_daily", None)),
                          daemon=True).start()
     yield
     stop.set()
@@ -266,6 +269,7 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
         workspace: str
         wait: bool = False
         feature_id: str | None = None
+        task_id: str | None = None
 
     class LaunchError(Exception):
         def __init__(self, status: int, msg: str):
@@ -277,7 +281,8 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
         st = registry.get_settings()
         return Flow(None, st["integration_branch"], st["review_round_limit"])
 
-    def _launch(role_name: str, task: str, workspace: str, wait: bool = False, feature_id: str | None = None):
+    def _launch(role_name: str, task: str, workspace: str, wait: bool = False, feature_id: str | None = None,
+                task_id: str | None = None):
         """Start one agent run. Shared by POST /api/runs and the Orchestrator's delegate tool."""
         if role_name in DEVELOPERS:  # FR-33: no development before the human approved the SRS
             try:
@@ -298,17 +303,26 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             Notifier().send("budget_pause", "Daily LLM budget reached",
                             f"Used {pct:.0f}% of the daily cap; new runs are blocked.", key="budget_pause")
             raise LaunchError(429, "daily LLM budget reached; new runs are blocked")
+        why = Budget().daily_gate(time.time(), st["daily_token_limit"])
+        if why:
+            raise LaunchError(429, why)
         held = Budget().gate(feature_id)
         if held:
             raise LaunchError(429, f"this feature is {held}; press Resume once your window has cleared")
-        runner = _make_runner(role, ws, feature_id)
-        run = runner.start(task, str(ws), feature_id)
+        runner = _make_runner(role, ws, feature_id, task_id)
+        run = runner.start(task, str(ws), feature_id, task_id)
         if wait:
             return runner.run(run["id"])
         threading.Thread(target=runner.run, args=(run["id"],), daemon=True).start()
         return run
 
-    def _make_runner(role, ws, feature_id: str | None = None) -> rt.Runner:
+    def _skill_names(feature_id: str | None, task_id: str | None) -> list[str]:
+        """Skills preloaded for a run: the feature's, then the task's, without repeats."""
+        names = (features_repo.get(feature_id) or {}).get("skills", []) if feature_id else []
+        names = names + ((tasks_repo.get(task_id) or {}).get("skills", []) if task_id else [])
+        return list(dict.fromkeys(names))
+
+    def _make_runner(role, ws, feature_id: str | None = None, task_id: str | None = None) -> rt.Runner:
         mapping = db.kv_get("role_models", {}).get(role.name)
         if not mapping:
             raise LaunchError(400, f"no model configured for role {role.name}")
@@ -323,19 +337,19 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
         return rt.Runner(provider, mapping["model"], role,
                          ToolBox(Workspace(ws), reg, pipeline=PipelineTool(role.name, _agent_flow),
                                  incidents=IncidentTool(role.name)), reg, Profiles().limits(),
-                         provider_id=rec["id"], gate=(lambda: Budget().gate(feature_id)) if feature_id else None,
-                         preload=reg.estimate((features_repo.get(feature_id) or {}).get("skills", []))["bodies"]
-                         if feature_id else None)
+                         provider_id=rec["id"], gate=lambda: (Budget().daily_gate(time.time(), registry.get_settings()["daily_token_limit"])
+                                       or (Budget().gate(feature_id) if feature_id else None)),
+                         preload=reg.estimate(_skill_names(feature_id, task_id))["bodies"])
 
-    def _restart_held(fid: str) -> list[str]:
-        """After a resume: runs held for this feature continue from where they stopped."""
+    def _restart_runs(match) -> list[str]:
+        """Held runs that match continue from where they stopped."""
         roles = load_roles(registry.get_settings()["role_dirs"])
         started = []
         for r in rt.runs.list():
-            if r.get("feature_id") != fid or r["status"] != "held" or r["role"] not in roles:
+            if r["status"] != "held" or r["role"] not in roles or not match(r):
                 continue
             try:
-                runner = _make_runner(roles[r["role"]], r["workspace"], fid)
+                runner = _make_runner(roles[r["role"]], r["workspace"], r.get("feature_id"), r.get("task_id"))
             except LaunchError:
                 continue  # stays held; the person sees it on the runs page
             rt.runs.update(r["id"], {"status": "running", "error": None, "finished_at": None})
@@ -346,7 +360,22 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             started.append(r["id"])
         return started
 
+    def _restart_held(fid: str) -> list[str]:
+        """After a resume: runs held for this feature continue."""
+        return _restart_runs(lambda r: r.get("feature_id") == fid)
+
+    def _restart_daily() -> list[str]:
+        """Runs held by the daily token limit continue once the 24-hour window has room again."""
+        if Budget().daily_gate(time.time(), registry.get_settings()["daily_token_limit"]):
+            return []
+        return _restart_runs(lambda r: str(r.get("error", "")).startswith("daily token limit"))
+
+    app.state.restart_daily = _restart_daily
     app.state.restart_held = _restart_held
+
+    @app.get("/api/budget", dependencies=guard)
+    def budget_overview():
+        return Budget().overview(time.time(), registry.get_settings()["daily_token_limit"])
 
     @app.get("/api/features/{fid}/budget", dependencies=guard)
     def get_budget(fid: str):
@@ -412,6 +441,18 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
     class SkillsIn(BaseModel):
         skills: list[str]
 
+    @app.put("/api/pipeline/tasks/{tid}/skills", dependencies=guard)
+    def set_task_skills(tid: str, body: SkillsIn):
+        t = tasks_repo.get(tid)
+        if t is None:
+            raise HTTPException(404, "not found")
+        names = list(dict.fromkeys(body.skills))
+        unknown = _registry().estimate(names)["unknown"]
+        if unknown:
+            raise HTTPException(400, f"unknown skill(s): {', '.join(unknown)}")
+        tasks_repo.update(tid, {"skills": names})
+        return {"selected": names, "tokens": _registry().estimate(names)["tokens"]}
+
     @app.get("/api/features/{fid}/skills", dependencies=guard)
     def get_feature_skills(fid: str):
         _feature_or_404(fid)
@@ -437,7 +478,7 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
     @app.post("/api/runs", dependencies=guard)
     def start_run(body: RunIn):
         try:
-            return _launch(body.role, body.task, body.workspace, body.wait, body.feature_id)
+            return _launch(body.role, body.task, body.workspace, body.wait, body.feature_id, body.task_id)
         except LaunchError as e:
             raise HTTPException(e.status, str(e))
 
@@ -834,7 +875,7 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             except httpx.HTTPError as e:
                 raise DelegationError(secrets_store.redact(f"the agent did not answer: {e}"))
 
-        def delegate(self, role, task, area, done_criteria, context, feature_id):
+        def delegate(self, role, task, area, done_criteria, context, feature_id, task_id=None):
             task_label = next((ln[6:] for ln in task.splitlines() if ln.startswith("Task: ")), task)[:60]
             if role == "orchestrator":
                 raise DelegationError("the orchestrator cannot delegate to itself")
@@ -844,7 +885,7 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             ws = (st["workspace_roots"] or [str(default_root())])[0]
             sent_at = time.time()  # taken before the run starts, so the report can never be dated earlier
             try:
-                run = _launch(role, task, ws, wait=os.environ.get("AO_SYNC_RUNS") == "1", feature_id=feature_id)
+                run = _launch(role, task, ws, wait=os.environ.get("AO_SYNC_RUNS") == "1", feature_id=feature_id, task_id=task_id)
             except LaunchError as e:
                 raise DelegationError(str(e))
             handoffs_repo.create({"from": "orchestrator", "to": role, "label": task_label, "at": sent_at,

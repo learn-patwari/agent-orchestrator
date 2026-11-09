@@ -68,3 +68,30 @@ def test_a_run_for_the_feature_starts_with_the_skill_text_in_context(authed, tmp
     authed.post("/api/runs", json={"role": "developer", "task": "go", "workspace": str(tmp_path), "wait": True,
                                    "feature_id": other})
     assert "ALWAYS WRITE" not in sent[1]["messages"][0]["content"]
+
+
+def test_a_task_can_add_its_own_skills_on_top_of_its_features(authed, tmp_path, monkeypatch):
+    from tests.test_runs_api import completion, setup_role
+    monkeypatch.setenv("AO_SYNC_RUNS", "1")
+    pid = setup_role(authed, tmp_path)
+    make_skill(tmp_path, "tdd", "FEATURE LEVEL TDD RULES")
+    make_skill(tmp_path, "sql", "TASK LEVEL SQL RULES")
+    authed.put("/api/role-models/developer", json={"provider_id": pid, "model": "m"})
+    fid = db.DocRepo("features").create({"title": "f", "status": "approved"})["id"]
+    tid = db.DocRepo("tasks").create({"name": "t", "feature_id": fid, "owner": "developer_1", "status": "developing"})["id"]
+    authed.put(f"/api/features/{fid}/skills", json={"skills": ["tdd"]})
+    assert authed.put(f"/api/pipeline/tasks/{tid}/skills", json={"skills": ["ghost"]}).status_code == 400
+    assert authed.put("/api/pipeline/tasks/zzz/skills", json={"skills": []}).status_code == 404
+    got = authed.put(f"/api/pipeline/tasks/{tid}/skills", json={"skills": ["sql"]}).json()
+    assert got["selected"] == ["sql"] and got["tokens"] > 0
+    sent = []
+
+    def handler(req):
+        sent.append(json.loads(req.content)["messages"][0]["content"])
+        return completion("done")
+    authed.upstream.handler = handler
+    body = {"role": "developer", "task": "go", "workspace": str(tmp_path), "wait": True, "feature_id": fid}
+    authed.post("/api/runs", json={**body, "task_id": tid})
+    authed.post("/api/runs", json=body)
+    assert "FEATURE LEVEL TDD RULES" in sent[0] and "TASK LEVEL SQL RULES" in sent[0]
+    assert "FEATURE LEVEL TDD RULES" in sent[1] and "TASK LEVEL SQL RULES" not in sent[1]

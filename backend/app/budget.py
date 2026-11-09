@@ -67,6 +67,25 @@ class Budget:
                 Notifier().mark_read(n["id"])
         return self.status(f["id"])
 
+    def daily(self, now: float, limit: int | None) -> dict:
+        """Tokens used in the last 24 hours across everything (a rolling window), against an optional limit."""
+        used = sum((c.get("input_tokens") or 0) + (c.get("output_tokens") or 0)
+                   for c in db.DocRepo("llm_calls").list() if now - c.get("at", 0) < 86_400)
+        return {"limit": limit, "used": used, "percent": None if not limit else round(used / limit * 100, 2)}
+
+    def daily_gate(self, now: float, limit: int | None) -> str | None:
+        d = self.daily(now, limit)
+        if limit and d["used"] >= limit:
+            return f"daily token limit reached ({d['used']} of {limit} tokens in the last 24 hours)"
+        return None
+
+    def overview(self, now: float, daily_limit: int | None) -> dict:
+        feats = []
+        for f in features.list():
+            s = self.status(f["id"])
+            feats.append({"id": f["id"], "title": f.get("title", f["id"]), **s})
+        return {"daily": self.daily(now, daily_limit), "features": feats}
+
     def tick(self, now: float) -> list[str]:
         """Resume the held features whose resume time has come. Returns their ids."""
         due = [f["id"] for f in features.list() if f.get("held") and f.get("resume_at") and f["resume_at"] <= now]

@@ -28,6 +28,25 @@ export default function Profiles() {
     load();
   }, []);
 
+  const [daily, setDaily] = useState("");
+  const [dailyMsg, setDailyMsg] = useState("");
+  useEffect(() => {
+    api("/settings")
+      .then((s) => setDaily(s.daily_token_limit ? String(s.daily_token_limit) : ""))
+      .catch(() => {});
+  }, []);
+
+  async function saveDaily(e: React.FormEvent) {
+    e.preventDefault();
+    setErr("");
+    try {
+      await api("/settings", "PUT", { daily_token_limit: daily ? Number(daily) : null });
+      setDailyMsg(daily ? `Daily limit set to ${Number(daily).toLocaleString()} tokens.` : "Daily limit removed.");
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+
   async function act(fn: () => Promise<any>) {
     setErr("");
     try {
@@ -52,6 +71,16 @@ export default function Profiles() {
     <>
       <PageHead title="Token profiles" sub="How much an agent run may spend. The active profile applies to every new run. Pick one, or copy one and change it." />
       {err && <Alert>{err}</Alert>}
+      <form onSubmit={saveDaily} className="card">
+        <h2>Daily token limit</h2>
+        <p className="muted">Tokens used across all work in any rolling 24 hours. At the limit new runs are refused and running work holds, then continues by itself when the window has room. Leave empty for no limit.</p>
+        <label htmlFor="dl">Tokens per 24 hours</label>
+        <input id="dl" name="daily" type="number" min={1} inputMode="numeric" autoComplete="off" placeholder="no limit" value={daily} onChange={(e) => setDaily(e.target.value)} />
+        <div className="row">
+          <button type="submit">Save daily limit</button>
+        </div>
+        {dailyMsg && <Alert kind="ok">{dailyMsg}</Alert>}
+      </form>
       {d && (
         <ul className="plain" aria-label="Profiles">
           {d.profiles.map((p: any) => (

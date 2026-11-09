@@ -16,6 +16,7 @@ export default function Status() {
   const [env, setEnv] = useState<Environments>(NO_ENV);
   const [pending, setPending] = useState<Pending[]>([]);
   const [incidents, setIncidents] = useState(0);
+  const [budget, setBudget] = useState<any>(null);
   const [err, setErr] = useState("");
   const [checks, setChecks] = useState<Record<string, Check> | null>(null);
   const [checking, setChecking] = useState(false);
@@ -35,9 +36,13 @@ export default function Status() {
           setHandoffs(r.handoffs);
           setEnv(r.environments ?? NO_ENV);
           setPending(r.pending_prod ?? []);
+          setIncidents(r.open_incidents ?? 0);
           setErr("");
         })
         .catch((e) => setErr(e.message));
+    api("/budget")
+      .then(setBudget)
+      .catch(() => {});
     load();
     const t = setInterval(load, 4000);
     return () => clearInterval(t);
@@ -94,6 +99,21 @@ export default function Status() {
         </Alert>
       )}
       {err && <Alert>{err}</Alert>}
+      {budget && (budget.daily.limit || budget.features.some((f: any) => f.limit)) && (
+        <p className="muted" role="status">
+          Tokens, last 24 hours: {budget.daily.used.toLocaleString()}
+          {budget.daily.limit ? ` of ${budget.daily.limit.toLocaleString()}` : " (no daily limit)"}.{" "}
+          {budget.features
+            .filter((f: any) => f.limit)
+            .map((f: any) => `${f.title}: ${f.used.toLocaleString()} of ${f.limit.toLocaleString()}${f.held ? " (held)" : ""}`)
+            .join("; ")}
+        </p>
+      )}
+      {budget?.features.filter((f: any) => f.held).map((f: any) => (
+        <Alert key={f.id} kind="warn">
+          “{f.title}” is held at its token limit. Resume it on the Features page once your window has cleared.
+        </Alert>
+      ))}
       {incidents > 0 && (
         <Alert kind="warn">
           {incidents} open production {incidents === 1 ? "incident is" : "incidents are"} with production support.
