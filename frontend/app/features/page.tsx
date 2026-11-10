@@ -133,6 +133,7 @@ function FeatureSkills({ fid }: { fid: string }) {
 
 export default function Features() {
   const [list, setList] = useState<any[]>([]);
+  const [loaded, setLoaded] = useState(false); // no empty message until the first answer arrives
   const [sel, setSel] = useState<any>(null);
   const [srs, setSrs] = useState("");
   const [f, setF] = useState({ title: "", text: "" });
@@ -142,6 +143,7 @@ export default function Features() {
   async function load(id?: string) {
     try {
       setList(await api("/features"));
+      setLoaded(true);
       const cur = id ?? sel?.id;
       if (cur) {
         const d = await api(`/features/${cur}`);
@@ -192,7 +194,7 @@ export default function Features() {
         </div>
       </form>
       {err && <Alert>{err}</Alert>}
-      {list.length === 0 ? (
+      {loaded && list.length === 0 ? (
         <Empty title="No features yet">Your first feature will appear here once you hand it to the architect.</Empty>
       ) : (
         <ul className="chips" aria-label="Features">

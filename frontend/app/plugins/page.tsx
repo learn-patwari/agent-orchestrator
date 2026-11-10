@@ -52,11 +52,11 @@ export default function Plugins() {
       <PageHead title="Plugins" sub="A plugin is a folder of roles, skills, workflows and templates. It is checked when installed, and one with problems stays off until it is fixed." />
       {err && <Alert>{err}</Alert>}
       <h2>Ships with the app</h2>
-      {(d?.available ?? []).length === 0 ? (
+      {d && d.available.length === 0 ? (
         <Empty title="Nothing ships with this build">Install a plugin from a folder below.</Empty>
       ) : (
         <ul className="plain" aria-label="Available plugins">
-          {d!.available.map((p) => (
+          {(d?.available ?? []).map((p) => (
             <li key={p.name} className="card">
               <h3>
                 {p.name} <span className="muted">{p.version}</span>
@@ -104,11 +104,11 @@ export default function Plugins() {
         {built && <Alert kind="ok">{built}</Alert>}
       </form>
       <h2>Installed</h2>
-      {(d?.installed ?? []).length === 0 ? (
+      {d && d.installed.length === 0 ? (
         <Empty title="No plugins installed">Install one above.</Empty>
       ) : (
         <ul className="plain" aria-label="Installed plugins">
-          {d!.installed.map((p) => (
+          {(d?.installed ?? []).map((p) => (
             <li key={p.name} className="card">
               <h3>
                 {p.name} <span className="muted">{p.version}</span> <Badge status={p.enabled ? "enabled" : "disabled"} />

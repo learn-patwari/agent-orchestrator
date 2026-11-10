@@ -7,6 +7,7 @@ const BLANK = { name: "", transport: "stdio", command: "", url: "", roles: "", e
 
 export default function Mcp() {
   const [list, setList] = useState<any[]>([]);
+  const [loaded, setLoaded] = useState(false); // no empty message until the first answer arrives
   const [f, setF] = useState(BLANK);
   const [err, setErr] = useState("");
   const [tests, setTests] = useState<Record<string, any>>({});
@@ -15,6 +16,7 @@ export default function Mcp() {
   async function load() {
     try {
       setList(await api("/mcp/servers"));
+      setLoaded(true);
     } catch (e: any) {
       setErr(e.message);
     }
@@ -100,7 +102,7 @@ export default function Mcp() {
           <button type="submit">Save server</button>
         </div>
       </form>
-      {list.length === 0 ? (
+      {loaded && list.length === 0 ? (
         <Empty title="No MCP servers">Add one above when you want agents to use outside tools.</Empty>
       ) : (
         <ul className="plain" aria-label="MCP servers">

@@ -5,6 +5,7 @@ import { api } from "../../lib/api";
 
 export default function Registry() {
   const [list, setList] = useState<any[]>([]);
+  const [loaded, setLoaded] = useState(false); // no empty message until the first answer arrives
   const [key, setKey] = useState("");
   const [shown, setShown] = useState(false);
   const [err, setErr] = useState("");
@@ -13,6 +14,7 @@ export default function Registry() {
   async function load() {
     try {
       setList(await api("/registry"));
+      setLoaded(true);
       setKey((await api("/registry/key")).key);
     } catch (e: any) {
       setErr(e.message);
@@ -62,7 +64,7 @@ export default function Registry() {
         {msg && <Alert kind="info">{msg}</Alert>}
         <p className="muted">Sending work to external agents also needs the External providers switch on in Settings.</p>
       </div>
-      {list.length === 0 ? (
+      {loaded && list.length === 0 ? (
         <Empty title="No external agents yet">When an agent registers it will appear here for your approval.</Empty>
       ) : (
         <ul className="plain" aria-label="External agents">
