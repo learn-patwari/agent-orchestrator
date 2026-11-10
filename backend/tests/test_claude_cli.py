@@ -119,3 +119,13 @@ def test_api_accepts_the_provider_with_no_key_or_url(authed):
     r = authed.post("/api/providers", json={"name": "Claude login", "type": "claude_cli"})
     assert r.status_code == 200, r.text
     assert r.json()["type"] == "claude_cli"
+
+
+def test_tools_offered_add_a_last_reminder_that_no_native_tools_exist():
+    # found live: sonnet and haiku tried native tools and gave up unless this is the last thing they read
+    seen = {}
+    mk(fake("ok", seen=seen)).complete("sonnet", [Message("user", "go")], tools=[TOOL])
+    assert seen["stdin"].rstrip().endswith("no native tools exist.")
+    plain = {}
+    mk(fake("ok", seen=plain)).complete("sonnet", [Message("user", "go")])
+    assert "Reminder" not in plain["stdin"]
