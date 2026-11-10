@@ -1,4 +1,4 @@
-# SRS: Agent Orchestrator (standalone web app for a team of AI software-development agents)
+# SRS: Agent Orchestrator (a Windows desktop app, built on a web UI and API, for a team of AI software-development agents)
 
 Status: Approved (by the user's instruction to start development, 2026-11-05)   Owner (human): Akshay (akshaypattu24@gmail.com)   Date: 2026-11-05   Version: 1
 
@@ -10,7 +10,7 @@ The user ran a multi-agent development workflow by hand across many Claude Code 
 ## 2. Decisions (stated by the user)
 | ID | Decision |
 |---|---|
-| D-1 | Standalone web app, not tied to Claude Code or Claude Desktop sessions. |
+| D-1 | Standalone app, not tied to Claude Code or Claude Desktop sessions. Built on a web UI and API (reachable in a browser for development); superseded as the product form by D-13: it ships as a Windows desktop app. |
 | D-2 | LLM connection by **API key + base URL**; OpenAI-compatible and Anthropic-compatible at minimum; model chosen **per role**. "External providers" (delegating to another product/CLI/hosted agent) are hidden behind a **disabled feature flag**; the provider interface allows adding them later. |
 | D-3 | **MCP-ready**: an MCP client layer with per-role allow-lists exists from the start; the app works with zero MCP servers. Jira is the first intended server; GitHub, Slack etc. later. |
 | D-4 | Roles: orchestrator (sole voice to the human), architect (also BA), developer 1 and developer 2, tester (QC), CI/CD, incident reporter, production support (L1 to L4). The separate reviewer role is replaced by developer peer review (D-17), amended by the user on 2026-11-07. |
