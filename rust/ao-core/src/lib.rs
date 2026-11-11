@@ -2,4 +2,9 @@
 pub mod auth;
 pub mod config;
 pub mod db;
+pub mod handoffs;
+pub mod inbox;
+pub mod notify;
+pub mod quota;
+pub mod scheduler;
 pub mod secrets;

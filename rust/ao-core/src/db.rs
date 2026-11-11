@@ -29,7 +29,7 @@ fn connect() -> Result<Connection> {
     Ok(Connection::open(db_path())?)
 }
 
-fn now() -> f64 {
+pub fn now() -> f64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)
 }
 
@@ -79,7 +79,7 @@ impl DocRepo {
 
     pub fn list(&self) -> Result<Vec<Value>> {
         let con = connect()?;
-        let mut st = con.prepare(&format!("SELECT data FROM {} ORDER BY created_at", self.table))?;
+        let mut st = con.prepare(&format!("SELECT data FROM {} ORDER BY created_at, rowid", self.table))?;
         let rows = st.query_map([], |r| r.get::<_, String>(0))?;
         let mut out = vec![];
         for r in rows {
