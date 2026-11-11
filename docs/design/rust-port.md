@@ -34,7 +34,7 @@ Main crates: axum, tokio, serde, serde_json, serde_yaml, rusqlite (bundled), req
 | 1 | **DONE (15 tests)** Foundation: config, db (`DocRepo`, kv), secrets (Fernet, redact, looks_like_secret), auth (scrypt, tokens) | config, db, secrets_store, auth | proves data compatibility with a real Python-written database in a test |
 | 2 | **DONE (44 tests)** Small stores: notify, handoffs, inbox and gates, scheduler, quota, rules, releases, incidents (the `Incidents` class; the agent tool arrives with phase 4) | those files | pure logic. `features.py` moved to phase 6 because it needs the providers and `ba.py` |
 | 3 | **DONE (25 tests)** Providers: base, openai, anthropic, claude_cli, registry (build, record_call), presets, pricing | providers/* | transport and process runner are injected; `stream` reads the whole reply first (incremental delivery comes with the HTTP layer); `get_settings`/`allowed_types` flag read arrive with phase 6 |
-| 4 | Runtime: roles, skills, tools, runner | runtime/* | tool authority, budgets, compaction, MCP hook |
+| 4 | **DONE (29 tests, 114 in all)** Runtime: roles, skills, tools, runner | runtime/* | pipeline, incident and MCP tools are hooks the later phases bind; run and message documents keep the Python key order so either backend can resume a run; shell and git go through `proc` (scrubbed env, timeout) |
 | 5 | Pipeline: flow, worktrees, github, merge gate and executor, release, docs gate, agent tool | pipeline/* | shells out to `git` and `gh` as now |
 | 6 | Orchestrator, ba, budget, profiles, registry, mcp, plugins | those files | MCP over stdio and http, plugin validation with file:line |
 | 7 | HTTP layer: all 93 routes in `ao-server` | main.py | route-by-route against the frontend's calls |

@@ -5,11 +5,8 @@ use super::base::*;
 use regex::Regex;
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
 use std::sync::{Arc, LazyLock};
-use std::time::{Duration, Instant};
 
 pub const TOOL_RULES: &str = concat!(
     "You have NO built-in tools in this session; never try to call one, a native call fails. The tools below are ",
@@ -21,12 +18,7 @@ pub const REMINDER: &str = "\n\n[Reminder] Reply with the JSON tool_calls object
 
 static FENCE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)```(?:json)?\s*(\{.*?\})\s*```").expect("valid pattern"));
 
-#[derive(Debug)]
-pub enum RunError {
-    Timeout(String),
-    NotFound(String),
-    Io(String),
-}
+pub use crate::proc::RunError;
 
 /// (argv, stdin, env, timeout seconds) -> (exit code, stdout, stderr)
 pub type Runner = Arc<dyn Fn(&[String], &str, &HashMap<String, String>, f64) -> Result<(i32, String, String), RunError> + Send + Sync>;
@@ -76,44 +68,7 @@ pub fn find_claude() -> String {
 }
 
 fn default_runner(argv: &[String], stdin: &str, env: &HashMap<String, String>, timeout: f64) -> Result<(i32, String, String), RunError> {
-    let mut child = Command::new(&argv[0])
-        .args(&argv[1..])
-        .env_clear()
-        .envs(env)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| if e.kind() == std::io::ErrorKind::NotFound { RunError::NotFound(e.to_string()) } else { RunError::Io(e.to_string()) })?;
-    let mut pipe = child.stdin.take().expect("piped");
-    let input = stdin.to_string();
-    std::thread::spawn(move || {
-        let _ = pipe.write_all(input.as_bytes());
-    });
-    let (mut out, mut err) = (child.stdout.take().expect("piped"), child.stderr.take().expect("piped"));
-    let o = std::thread::spawn(move || {
-        let mut s = String::new();
-        let _ = std::io::Read::read_to_string(&mut out, &mut s);
-        s
-    });
-    let e = std::thread::spawn(move || {
-        let mut s = String::new();
-        let _ = std::io::Read::read_to_string(&mut err, &mut s);
-        s
-    });
-    let start = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(s)) => break s,
-            Ok(None) if start.elapsed().as_secs_f64() > timeout => {
-                let _ = child.kill();
-                return Err(RunError::Timeout(format!("timed out after {timeout} seconds")));
-            }
-            Ok(None) => std::thread::sleep(Duration::from_millis(25)),
-            Err(e) => return Err(RunError::Io(e.to_string())),
-        }
-    };
-    Ok((status.code().unwrap_or(-1), o.join().unwrap_or_default(), e.join().unwrap_or_default()))
+    crate::proc::run(argv, None, env, stdin, timeout)
 }
 
 fn flatten(messages: &[Message]) -> String {
