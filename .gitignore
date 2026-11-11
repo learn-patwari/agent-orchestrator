@@ -13,3 +13,4 @@ desktop/stage/
 desktop/dist/
 backend/build/
 backend/dist/
+rust/target/

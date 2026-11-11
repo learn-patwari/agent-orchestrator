@@ -1,0 +1,11 @@
+[package]
+name = "ao-server"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "ao-backend"
+path = "src/main.rs"
+
+[dependencies]
+ao-core = { path = "../ao-core" }

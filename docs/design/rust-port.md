@@ -30,8 +30,8 @@ Main crates: axum, tokio, serde, serde_json, serde_yaml, rusqlite (bundled), req
 ## Phases (each ends with its tests green and one commit)
 | # | Slice | Python source | Notes |
 |---|---|---|---|
-| 0 | Toolchain, workspace, CI-free local `cargo test` | | needs the Rust toolchain and MSVC build tools |
-| 1 | Foundation: config, db (`DocRepo`, kv), secrets (Fernet, redact, looks_like_secret), auth (scrypt, tokens) | config, db, secrets_store, auth | proves data compatibility with a real Python-written database in a test |
+| 0 | Toolchain, workspace, CI-free local `cargo test` | | **done**: Rust 1.99.1 and MSVC Build Tools installed, `rust/` workspace builds |
+| 1 | **DONE (15 tests)** Foundation: config, db (`DocRepo`, kv), secrets (Fernet, redact, looks_like_secret), auth (scrypt, tokens) | config, db, secrets_store, auth | proves data compatibility with a real Python-written database in a test |
 | 2 | Small stores: notify, inbox, handoffs, scheduler, quota, rules, features, incidents, releases | those files | pure logic |
 | 3 | Providers: base, openai, anthropic, claude_cli, registry, presets, pricing | providers/* | retries, streaming, error classes, tool-call parsing |
 | 4 | Runtime: roles, skills, tools, runner | runtime/* | tool authority, budgets, compaction, MCP hook |

@@ -1,0 +1,7 @@
+{
+  "secret_key": "cw_0x689RpI-jtRR7oE8h_eQsKImvJapLO-8kMv6-bk=",
+  "fernet_token": "gAAAAABq9B_SWKOHxz6138o8SSSLqzlp7fahfoLDu7tM0enImfVr2m8RoDkjlbdDfphErTy0fAKGQTyrCHX1yZPHJBwb8ObD5_3EbSb-QZknhKvI93tQYnE=",
+  "fernet_plain": "sk-abcdefghijklmnopqrstuvwxyz",
+  "session_token": "1794988626.77ec55d2a55164d5.179300b77b7c6154a294886f8c194ab0d03db93d17ef8c2972daaa405ae9c24d",
+  "password": "correct-horse-1"
+}
