@@ -46,7 +46,7 @@ fn audit(event: &str, fields: Value) -> Result<Value, DbError> {
 }
 
 pub struct Inbox {
-    items: DocRepo,
+    pub items: DocRepo,
     assumed: DocRepo,
     auto: bool,
 }
@@ -78,7 +78,16 @@ impl Inbox {
     }
 
     pub fn ask(&self, title: &str, body: &str, options: &[&str], default: Option<&str>, run_id: Option<&str>) -> Result<Value, InboxError> {
-        let item = self.post("question", title, body, json!({"options": options, "default": default, "run_id": run_id}))?;
+        self.ask_with(title, body, options, default, run_id, json!({}))
+    }
+
+    /// Like `ask`, with more fields on the item (a feature's question carries its `feature_id`).
+    pub fn ask_with(&self, title: &str, body: &str, options: &[&str], default: Option<&str>, run_id: Option<&str>, extra: Value) -> Result<Value, InboxError> {
+        let mut fields = json!({"options": options, "default": default, "run_id": run_id});
+        if let (Some(f), Value::Object(e)) = (fields.as_object_mut(), extra) {
+            f.extend(e);
+        }
+        let item = self.post("question", title, body, fields)?;
         if self.auto && default.is_some() {
             return self.resolve_default(&item, "auto_default");
         }
