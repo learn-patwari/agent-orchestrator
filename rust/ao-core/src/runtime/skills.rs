@@ -21,7 +21,7 @@ pub struct Estimate {
     pub bodies: Vec<(String, String)>,
 }
 
-fn parse(path: &Path) -> Option<(serde_json::Map<String, Value>, String)> {
+pub(crate) fn parse(path: &Path) -> Option<(serde_json::Map<String, Value>, String)> {
     let text = String::from_utf8_lossy(&std::fs::read(path).ok()?).into_owned();
     let (fm, body) = split_frontmatter(&text)?;
     let meta = parse_yaml(fm)?;

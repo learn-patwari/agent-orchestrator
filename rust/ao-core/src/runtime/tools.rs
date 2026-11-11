@@ -65,7 +65,7 @@ pub(crate) fn resolve_path(p: &Path) -> PathBuf {
 }
 
 /// Drops the verbatim prefix Windows adds when canonicalising, so git and other programs accept the path.
-fn simplify(p: PathBuf) -> PathBuf {
+pub(crate) fn simplify(p: PathBuf) -> PathBuf {
     let t = p.to_string_lossy().into_owned();
     match t.strip_prefix(r"\\?\") {
         Some(rest) if !rest.starts_with("UNC\\") => PathBuf::from(rest),
@@ -315,6 +315,11 @@ impl ToolBox {
     pub fn mcp(mut self, m: Box<dyn McpTools>) -> Self {
         self.mcp = Some(m);
         self
+    }
+
+    /// The names of the built-in tools (not MCP ones).
+    pub fn names(&self) -> Vec<&'static str> {
+        self.specs.iter().map(|(n, _)| *n).collect()
     }
 
     pub fn specs_for<S: AsRef<str>>(&self, allowed: &[S]) -> Vec<ToolSpec> {
