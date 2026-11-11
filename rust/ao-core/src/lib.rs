@@ -6,6 +6,7 @@ pub mod handoffs;
 pub mod incidents;
 pub mod inbox;
 pub mod notify;
+pub mod pipeline;
 pub mod proc;
 pub mod providers;
 pub mod runtime;

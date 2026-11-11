@@ -60,7 +60,20 @@ fn lexical(p: &Path) -> PathBuf {
 }
 
 /// The real path of `p` even when its tail does not exist yet: the existing part is canonicalised.
-fn resolve_path(p: &Path) -> PathBuf {
+pub(crate) fn resolve_path(p: &Path) -> PathBuf {
+    simplify(real_path(p))
+}
+
+/// Drops the verbatim prefix Windows adds when canonicalising, so git and other programs accept the path.
+fn simplify(p: PathBuf) -> PathBuf {
+    let t = p.to_string_lossy().into_owned();
+    match t.strip_prefix(r"\\?\") {
+        Some(rest) if !rest.starts_with("UNC\\") => PathBuf::from(rest),
+        _ => p,
+    }
+}
+
+fn real_path(p: &Path) -> PathBuf {
     let p = lexical(p);
     let mut tail = vec![];
     let mut cur = p.as_path();
@@ -88,7 +101,7 @@ fn glob(pat: &[char], text: &[char]) -> bool {
     }
 }
 
-fn fnmatch(name: &str, pat: &str) -> bool {
+pub(crate) fn fnmatch(name: &str, pat: &str) -> bool {
     let (n, p): (Vec<char>, Vec<char>) = (name.to_lowercase().chars().collect(), pat.to_lowercase().chars().collect());
     glob(&p, &n)
 }
