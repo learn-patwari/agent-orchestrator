@@ -12,17 +12,22 @@ from pathlib import Path
 import yaml
 
 READ = ["read_file", "list_dir", "git_read", "use_skill"]
+DEVELOPERS = ("developer", "developer_1", "developer_2")  # all need an approved SRS before they may run
 DEFAULT_TOOLS = {
     "orchestrator": READ,
-    "architect": READ + ["write_file"],
+    "architect": READ + ["write_file", "pipeline"],
     "developer": READ + ["write_file", "run_shell", "git_write"],
-    "tester": READ + ["write_file", "run_shell"],
+    "developer_1": READ + ["write_file", "run_shell", "git_write", "pipeline"],
+    "developer_2": READ + ["write_file", "run_shell", "git_write", "pipeline"],
+    "tester": READ + ["write_file", "run_shell", "pipeline"],
     "reviewer": READ,
-    "cicd": READ + ["run_shell"],
+    "cicd": READ + ["run_shell", "pipeline"],
     "incident-reporter": READ,
     "production-support": READ + ["write_file", "run_shell", "git_write"],
-    "incident_reporter": READ,
-    "production_support": READ + ["write_file", "run_shell", "git_write"],
+    "technical_writer": READ + ["write_file", "git_write"],  # prose only: no shell, no pipeline
+    "technical-writer": READ + ["write_file", "git_write"],
+    "incident_reporter": READ + ["incident"],
+    "production_support": READ + ["write_file", "run_shell", "git_write", "incident"],
 }
 
 

@@ -3,6 +3,28 @@ import { useEffect, useState } from "react";
 import { Alert, Badge, Empty, PageHead } from "../../components/ui";
 import { api } from "../../lib/api";
 
+function TaskSkills({ id, name, initial, onError }: { id: string; name: string; initial: string[]; onError: (m: string) => void }) {
+  const [text, setText] = useState(initial.join(", "));
+  const [note, setNote] = useState("");
+  async function save() {
+    onError("");
+    setNote("");
+    try {
+      const r = await api(`/pipeline/tasks/${id}/skills`, "PUT", { skills: text.split(",").map((s) => s.trim()).filter(Boolean) });
+      setNote(`Saved, about ${r.tokens.toLocaleString()} tokens`);
+    } catch (e: any) {
+      onError(e.message);
+    }
+  }
+  return (
+    <span className="row">
+      <input aria-label={`Skills for ${name}`} name={`skills-${id}`} autoComplete="off" placeholder="skill names, comma separated" value={text} onChange={(e) => setText(e.target.value)} />
+      <button type="button" className="secondary" onClick={save}>Save</button>
+      {note && <span className="muted" role="status">{note}</span>}
+    </span>
+  );
+}
+
 export default function Pipeline() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [features, setFeatures] = useState<any[]>([]);
@@ -80,6 +102,7 @@ export default function Pipeline() {
                 <th scope="col">PR</th>
                 <th scope="col">Tests</th>
                 <th scope="col">Rounds</th>
+                <th scope="col">Skills</th>
               </tr>
             </thead>
             <tbody>
@@ -91,6 +114,9 @@ export default function Pipeline() {
                   <td>{t.pr_number ? `#${t.pr_number}` : "–"}</td>
                   <td>{t.tests ? `${t.tests.passed} pass / ${t.tests.failed} fail` : "–"}</td>
                   <td>{t.rounds}</td>
+                  <td>
+                    <TaskSkills id={t.id} name={t.name} initial={t.skills ?? []} onError={setErr} />
+                  </td>
                 </tr>
               ))}
             </tbody>

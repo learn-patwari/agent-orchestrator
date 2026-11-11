@@ -19,9 +19,12 @@ from .base import (AuthError, Completion, LLMProvider, Message, NetworkError, Pr
 
 FENCE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.S)
 TOOL_RULES = (
-    "You may call tools. To call tools, reply with ONLY one JSON object, optionally inside a ```json fence: "
-    '{"tool_calls": [{"name": "<tool>", "arguments": {...}}]}. Use only the tools listed below. '
-    "If you need no tool, answer normally in plain text.\nTools:\n")
+    "You have NO built-in tools in this session; never try to call one, a native call fails. The tools below are "
+    "not native: you call one by writing, as your whole reply, a single JSON object and nothing else: "
+    '{"tool_calls": [{"name": "<tool>", "arguments": {...}}]}. Do this whenever the task needs one of them. '
+    "If no tool is needed, answer in plain text.\nTools:\n")
+REMINDER = ("\n\n[Reminder] Reply with the JSON tool_calls object if you need a listed tool; "
+            "no native tools exist.")  # read last; without it sonnet and haiku tried native tools and gave up
 
 
 def _default_runner(argv: list[str], stdin: str, env: dict, timeout: float) -> tuple[int, str, str]:
@@ -90,7 +93,7 @@ class ClaudeCliProvider(LLMProvider):
                 "--system-prompt", system, "--no-session-persistence"]
         env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
         try:
-            code, out, err = self.run(argv, _flatten(messages), env, self.timeout)
+            code, out, err = self.run(argv, _flatten(messages) + (REMINDER if tools else ""), env, self.timeout)
         except (TimeoutError, subprocess.TimeoutExpired) as e:
             raise NetworkError(f"claude did not answer in time: {e}") from e
         except OSError as e:

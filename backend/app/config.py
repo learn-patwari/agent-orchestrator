@@ -26,9 +26,11 @@ DEFAULT_SETTINGS = {
     "review_round_limit": 3,  # Q-6
     "decide_with_defaults": False,
     "skill_paths": [str(BUILTIN / "skills"), str(Path.home() / ".claude" / "skills")],  # precedence: first wins
-    "role_dirs": [str(BUILTIN / "roles")],  # built-in roles ship with the app; add folders to override
+    "role_dirs": [str(BUILTIN / "roles")],  # built-in roles ship with the app; add folders to override
+
     "workspace_roots": [],  # empty = only <data>/workspaces
     "daily_budget_usd": None,  # None = no cap; scheduler pauses at 80%, new runs stop at 100%
+    "daily_token_limit": None,  # None = no cap; tokens in the last 24 h across all work, new runs stop at the cap
     "pause_at_percent": 80,
     "repo_path": "",  # git repository agents work on (worktrees are created next to it, never inside)
     "worktree_root": "",  # empty = <data>/worktrees

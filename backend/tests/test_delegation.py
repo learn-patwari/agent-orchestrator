@@ -54,7 +54,7 @@ def test_orchestrator_is_offered_the_delegation_tools_only_when_it_can_delegate(
     assert s.tools[0] == []
     s = Script(("hi", []))
     Orchestrator(s, "m", "sys", delegator=FakeDelegator()).chat("hello")
-    assert s.tools[0] == ["delegate", "get_report", "list_runs"]
+    assert s.tools[0] == ["delegate", "get_report", "request_production", "list_runs", "ask_external_agent"]
 
 
 def test_delegate_sends_a_self_contained_brief_and_the_model_sees_the_run_id():

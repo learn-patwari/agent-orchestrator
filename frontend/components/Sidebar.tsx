@@ -22,12 +22,15 @@ const GROUPS: { label: string; items: { href: string; name: string; icon: ReactN
   },
   {
     label: "Team",
-    items: [{ href: "/status", name: "Agents", icon: icon(<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm13 10v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" />) }],
+    items: [{ href: "/registry", name: "External agents", icon: icon(<path d="M12 2v4m0 12v4M2 12h4m12 0h4M7 7l2 2m6 6l2 2m0-10l-2 2M9 15l-2 2M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" />) }, { href: "/status", name: "Agents", icon: icon(<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm13 10v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" />) }],
   },
   {
     label: "Setup",
     items: [
       { href: "/providers", name: "Providers", icon: icon(<path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0V7zm6 10v5m-4 3h8" />) },
+      { href: "/plugins", name: "Plugins", icon: icon(<path d="M12 2l9 5v10l-9 5-9-5V7l9-5zm0 0v20M3 7l9 5 9-5" />) },
+      { href: "/mcp", name: "MCP servers", icon: icon(<path d="M8 3v5M16 3v5M5 8h14v3a7 7 0 0 1-14 0V8zm7 10v3m-4 5h8" />) },
+      { href: "/profiles", name: "Token profiles", icon: icon(<path d="M12 3v18M5 8h14M7 13h10M9 18h6" />) },
       { href: "/settings", name: "Settings", icon: icon(<path d="M4 6h10m4 0h2M4 12h4m4 0h8M4 18h12m4 0h0M16 4v4M10 10v4M18 16v4" />) },
     ],
   },

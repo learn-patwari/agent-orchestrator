@@ -3,14 +3,21 @@ from contextlib import asynccontextmanager
 
 import os
 import threading
+import time
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Response
+import httpx
+from fastapi import Depends, FastAPI, Header, HTTPException, Response
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from . import auth, db, secrets_store
 from .ba import BAError
+from .agent_registry import AgentRegistry, RegistryError, key_ok, registry_key
+from .budget import Budget
+from .plugins import Plugins
+from .mcp import McpError, McpServers, McpTools, connect as mcp_connect
+from .profiles import BUILTIN as BUILTIN_PROFILES, ProfileError, Profiles
 from .features import Features, NotApproved, features as features_repo, require_approved
 from .inbox import Conflict, Inbox
 from .notify import Notifier
@@ -18,6 +25,10 @@ from .pipeline.flow import Flow, FlowError, tasks as tasks_repo
 from .pipeline.github import GhClient
 from .pipeline.merge_exec import MergeRefused, merge_batch
 from .pipeline.merge_gate import GateConfig
+from .incidents import IncidentError, IncidentTool, Incidents
+from .pipeline.agent_tool import PipelineTool
+from .pipeline.docs_gate import DocsGate, state as docs_state
+from .pipeline.release import Release
 from .pipeline.worktrees import WorktreeError, WorktreeManager
 from .orchestrator import DelegationError, Orchestrator, check_workspace, default_root, status_table, team_check, team_snapshot
 from .scheduler import Scheduler, budget_percent_used
@@ -25,13 +36,14 @@ from .providers import pricing, registry
 from .providers.presets import PRESETS
 from .providers.base import ProviderError
 from .runtime import runner as rt
-from .runtime.roles import load_roles, validate
+from .runtime.roles import DEVELOPERS, load_roles, validate
 from .runtime.skills import SkillRegistry
 from .runtime.tools import ToolBox, Workspace
 
 providers_repo = db.DocRepo("providers")
-ROLES = ["orchestrator", "architect", "developer", "tester", "reviewer", "cicd",
-         "incident_reporter", "production_support"]
+ROLES = ["orchestrator", "architect", "developer_1", "developer_2", "tester", "cicd",
+         "incident_reporter", "production_support", "technical_writer"]
+handoffs_repo = db.DocRepo("handoffs")
 
 
 JOB_KINDS = {"reminder"}  # more kinds (start a run, resume a lane) arrive with the pipeline milestones
@@ -43,7 +55,7 @@ def run_job(job: dict) -> None:
         Notifier().send("reminder", job["name"], job["payload"].get("text", ""), key=f"job:{job['id']}")
 
 
-def scheduler_loop(stop: threading.Event, every: float = 30.0) -> None:
+def scheduler_loop(stop: threading.Event, every: float = 30.0, restart_held=None, restart_daily=None) -> None:
     """Local background loop: schedules run only while the app is running."""
     import time as _t
     while not stop.wait(every):
@@ -52,6 +64,14 @@ def scheduler_loop(stop: threading.Event, every: float = 30.0) -> None:
             Scheduler(st["pause_at_percent"]).tick(_t.time(), budget_percent_used(st["daily_budget_usd"]), run_job)
         except Exception:
             pass  # never let the loop die; failures of single jobs are recorded by tick()
+        try:  # features held at their token limit continue once the time the person set has come
+            for fid in Budget().tick(_t.time()):
+                if restart_held:
+                    restart_held(fid)
+            if restart_daily:
+                restart_daily()
+        except Exception:
+            pass
 
 
 @asynccontextmanager
@@ -59,7 +79,9 @@ async def lifespan(app: FastAPI):
     db.init_db()
     stop = threading.Event()
     if not os.environ.get("AO_NO_SCHEDULER"):
-        threading.Thread(target=scheduler_loop, args=(stop,), daemon=True).start()
+        threading.Thread(target=scheduler_loop, args=(stop, 30.0, getattr(app.state, "restart_held", None),
+                                           getattr(app.state, "restart_daily", None)),
+                         daemon=True).start()
     yield
     stop.set()
 
@@ -176,13 +198,17 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             return {"ok": False, "error_kind": "unknown", "error": secrets_store.redact(f"{type(e).__name__}: {e}")}
 
     # ---- per-role models (FR-8) ----
+    def _role_names() -> list[str]:
+        """Built-in roles plus any role file the user added, so every role can be given a model."""
+        return list(dict.fromkeys([*ROLES, *load_roles(registry.get_settings()["role_dirs"])]))
+
     @app.get("/api/role-models", dependencies=guard)
     def get_role_models():
-        return {"roles": ROLES, "models": db.kv_get("role_models", {})}
+        return {"roles": _role_names(), "models": db.kv_get("role_models", {})}
 
     @app.put("/api/role-models/{role}", dependencies=guard)
     def set_role_model(role: str, body: dict):
-        if role not in ROLES:
+        if role not in _role_names():
             raise HTTPException(404, "unknown role")
         if not providers_repo.get(body.get("provider_id", "")) or not body.get("model"):
             raise HTTPException(400, "need a known provider_id and a model")
@@ -246,15 +272,22 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
         workspace: str
         wait: bool = False
         feature_id: str | None = None
+        task_id: str | None = None
 
     class LaunchError(Exception):
         def __init__(self, status: int, msg: str):
             super().__init__(msg)
             self.status = status
 
-    def _launch(role_name: str, task: str, workspace: str, wait: bool = False, feature_id: str | None = None):
+    def _agent_flow() -> Flow:
+        # agents report steps on existing tasks; creating worktrees stays a human/API action
+        st = registry.get_settings()
+        return Flow(None, st["integration_branch"], st["review_round_limit"])
+
+    def _launch(role_name: str, task: str, workspace: str, wait: bool = False, feature_id: str | None = None,
+                task_id: str | None = None):
         """Start one agent run. Shared by POST /api/runs and the Orchestrator's delegate tool."""
-        if role_name == "developer":  # FR-33: no development before the human approved the SRS
+        if role_name in DEVELOPERS:  # FR-33: no development before the human approved the SRS
             try:
                 require_approved(feature_id)
             except NotApproved as e:
@@ -273,9 +306,29 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
             Notifier().send("budget_pause", "Daily LLM budget reached",
                             f"Used {pct:.0f}% of the daily cap; new runs are blocked.", key="budget_pause")
             raise LaunchError(429, "daily LLM budget reached; new runs are blocked")
-        mapping = db.kv_get("role_models", {}).get(role_name)
+        why = Budget().window_gate(time.time()) or Budget().daily_gate(time.time(), st["daily_token_limit"])
+        if why:
+            raise LaunchError(429, why)
+        held = Budget().gate(feature_id)
+        if held:
+            raise LaunchError(429, f"this feature is {held}; press Resume once your window has cleared")
+        runner = _make_runner(role, ws, feature_id, task_id)
+        run = runner.start(task, str(ws), feature_id, task_id)
+        if wait:
+            return runner.run(run["id"])
+        threading.Thread(target=runner.run, args=(run["id"],), daemon=True).start()
+        return run
+
+    def _skill_names(feature_id: str | None, task_id: str | None) -> list[str]:
+        """Skills preloaded for a run: the feature's, then the task's, without repeats."""
+        names = (features_repo.get(feature_id) or {}).get("skills", []) if feature_id else []
+        names = names + ((tasks_repo.get(task_id) or {}).get("skills", []) if task_id else [])
+        return list(dict.fromkeys(names))
+
+    def _make_runner(role, ws, feature_id: str | None = None, task_id: str | None = None) -> rt.Runner:
+        mapping = db.kv_get("role_models", {}).get(role.name)
         if not mapping:
-            raise LaunchError(400, f"no model configured for role {role_name}")
+            raise LaunchError(400, f"no model configured for role {role.name}")
         rec = providers_repo.get(mapping["provider_id"])
         if not rec:
             raise LaunchError(400, "provider for this role no longer exists")
@@ -284,20 +337,252 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
         except ValueError as e:
             raise LaunchError(400, str(e))
         reg = _registry()
-        lim = registry.get_settings()["run_limits"]
-        runner = rt.Runner(provider, mapping["model"], role, ToolBox(Workspace(ws), reg), reg,
-                           rt.Limits(max_steps=lim["max_steps"], max_total_tokens=lim["max_total_tokens"]),
-                           provider_id=rec["id"])
-        run = runner.start(task, str(ws))
-        if wait:
-            return runner.run(run["id"])
-        threading.Thread(target=runner.run, args=(run["id"],), daemon=True).start()
-        return run
+        return rt.Runner(provider, mapping["model"], role,
+                         ToolBox(Workspace(ws), reg, pipeline=PipelineTool(role.name, _agent_flow),
+                                 incidents=IncidentTool(role.name), mcp=McpTools(role.name)), reg,
+                         Profiles().limits(),
+                         provider_id=rec["id"], gate=lambda: (Budget().window_gate(time.time())
+                                       or Budget().daily_gate(time.time(), registry.get_settings()["daily_token_limit"])
+                                       or (Budget().gate(feature_id) if feature_id else None)),
+                         preload=reg.estimate(_skill_names(feature_id, task_id))["bodies"])
+
+    def _restart_runs(match) -> list[str]:
+        """Held runs that match continue from where they stopped."""
+        roles = load_roles(registry.get_settings()["role_dirs"])
+        started = []
+        for r in rt.runs.list():
+            if r["status"] != "held" or r["role"] not in roles or not match(r):
+                continue
+            try:
+                runner = _make_runner(roles[r["role"]], r["workspace"], r.get("feature_id"), r.get("task_id"))
+            except LaunchError:
+                continue  # stays held; the person sees it on the runs page
+            rt.runs.update(r["id"], {"status": "running", "error": None, "finished_at": None})
+            if os.environ.get("AO_SYNC_RUNS") == "1":
+                runner.run(r["id"])
+            else:
+                threading.Thread(target=runner.run, args=(r["id"],), daemon=True).start()
+            started.append(r["id"])
+        return started
+
+    def _restart_held(fid: str) -> list[str]:
+        """After a resume: runs held for this feature continue."""
+        return _restart_runs(lambda r: r.get("feature_id") == fid)
+
+    def _restart_daily() -> list[str]:
+        """Runs held by the daily limit or the usage window continue once that guard has room again."""
+        now, b = time.time(), Budget()
+        daily_ok = not b.daily_gate(now, registry.get_settings()["daily_token_limit"])
+        window_ok = not b.window_gate(now)
+
+        def due(r):
+            e = str(r.get("error", ""))
+            return (e.startswith("daily token limit") and daily_ok and window_ok) or \
+                   (e.startswith("usage window") and window_ok and daily_ok)
+        return _restart_runs(due)
+
+    app.state.restart_daily = _restart_daily
+    app.state.restart_held = _restart_held
+
+    # ---- plugins (FR-20 to FR-22) ----
+    def _known() -> tuple[set, set, set]:
+        roles = set(load_roles(registry.get_settings()["role_dirs"]))
+        tools = set(ToolBox(Workspace(Path(".")), None).specs)
+        return roles, tools, set(_registry().scan())
+
+    class PluginIn(BaseModel):
+        path: str
+
+    @app.get("/api/plugins", dependencies=guard)
+    def plugins_list():
+        return {"installed": Plugins().list(), "available": Plugins().available()}
+
+    @app.post("/api/plugins/install", dependencies=guard)
+    def plugins_install(body: PluginIn):
+        try:
+            return Plugins().install(body.path, *_known())
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.post("/api/agents/build", dependencies=guard)
+    def agents_build(body: dict):
+        try:
+            return Plugins().build_agent(body, *_known())
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.get("/api/plugins/{name}/export", dependencies=guard)
+    def plugins_export(name: str):
+        try:
+            data = Plugins().export_zip(name)
+        except KeyError:
+            raise HTTPException(404, "not found")
+        return Response(data, media_type="application/zip",
+                        headers={"Content-Disposition": f'attachment; filename="{name}.zip"'})
+
+    @app.post("/api/plugins/{name}/enable", dependencies=guard)
+    def plugins_enable(name: str):
+        try:
+            return Plugins().enable(name, *_known())
+        except KeyError:
+            raise HTTPException(404, "not found")
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+
+    @app.post("/api/plugins/{name}/disable", dependencies=guard)
+    def plugins_disable(name: str):
+        try:
+            return Plugins().disable(name)
+        except KeyError:
+            raise HTTPException(404, "not found")
+
+    @app.delete("/api/plugins/{name}", dependencies=guard)
+    def plugins_remove(name: str):
+        if not Plugins().remove(name):
+            raise HTTPException(404, "not found")
+        return {"ok": True}
+
+    # ---- MCP servers (FR-44) ----
+    @app.get("/api/mcp/servers", dependencies=guard)
+    def mcp_list():
+        return McpServers().list()
+
+    @app.put("/api/mcp/servers/{name}", dependencies=guard)
+    def mcp_save(name: str, body: dict):
+        try:
+            return McpServers().save(name, body)
+        except McpError as e:
+            raise HTTPException(400, str(e))
+
+    @app.delete("/api/mcp/servers/{name}", dependencies=guard)
+    def mcp_delete(name: str):
+        if not McpServers().delete(name):
+            raise HTTPException(404, "not found")
+        return {"ok": True}
+
+    @app.post("/api/mcp/servers/{name}/test", dependencies=guard)
+    def mcp_test(name: str):
+        server = McpServers().get(name)
+        if server is None:
+            raise HTTPException(404, "not found")
+        try:
+            c = mcp_connect(server, app.state.http_client)
+        except McpError as e:
+            return {"ok": False, "error": secrets_store.redact(str(e)), "tools": []}
+        try:
+            tools = [{"name": t["name"], "description": t.get("description", "")} for t in c.list_tools()]
+            return {"ok": True, "error": None, "tools": tools}
+        except McpError as e:
+            return {"ok": False, "error": secrets_store.redact(str(e)), "tools": []}
+        finally:
+            c.close()
+
+    @app.get("/api/budget", dependencies=guard)
+    def budget_overview():
+        return Budget().overview(time.time(), registry.get_settings()["daily_token_limit"])
+
+    @app.get("/api/features/{fid}/budget", dependencies=guard)
+    def get_budget(fid: str):
+        _feature_or_404(fid)
+        return Budget().status(fid)
+
+    class BudgetIn(BaseModel):
+        limit: int | None = None
+        resume_at: float | None = None
+
+    @app.put("/api/features/{fid}/budget", dependencies=guard)
+    def set_budget(fid: str, body: BudgetIn):
+        _feature_or_404(fid)
+        try:
+            Budget().set(fid, body.limit, body.resume_at)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return Budget().status(fid)
+
+    def _profiles_view() -> dict:
+        p = Profiles()
+        return {"active": p.active()["name"], "profiles": p.list()}
+
+    @app.get("/api/profiles", dependencies=guard)
+    def get_profiles():
+        return _profiles_view()
+
+    @app.put("/api/profiles/{name}", dependencies=guard)
+    def save_profile(name: str, body: dict):
+        try:
+            Profiles().save(name, body)
+        except ProfileError as e:
+            raise HTTPException(400, str(e))
+        return _profiles_view()
+
+    @app.delete("/api/profiles/{name}", dependencies=guard)
+    def delete_profile(name: str):
+        try:
+            Profiles().delete(name)
+        except ProfileError as e:
+            raise HTTPException(400 if name in BUILTIN_PROFILES else 404, str(e))
+        return _profiles_view()
+
+    class ActiveIn(BaseModel):
+        name: str
+
+    @app.post("/api/profiles/active", dependencies=guard)
+    def set_active_profile(body: ActiveIn):
+        try:
+            Profiles().set_active(body.name)
+        except ProfileError as e:
+            raise HTTPException(404, str(e))
+        return _profiles_view()
+
+    def _skills_view(fid: str) -> dict:
+        reg = _registry()
+        selected = features_repo.get(fid).get("skills", [])
+        available = []
+        for s in reg.catalog():
+            available.append({**s, "tokens": reg.estimate([s["name"]])["tokens"]})
+        return {"selected": selected, "tokens": reg.estimate(selected)["tokens"], "available": available}
+
+    class SkillsIn(BaseModel):
+        skills: list[str]
+
+    @app.put("/api/pipeline/tasks/{tid}/skills", dependencies=guard)
+    def set_task_skills(tid: str, body: SkillsIn):
+        t = tasks_repo.get(tid)
+        if t is None:
+            raise HTTPException(404, "not found")
+        names = list(dict.fromkeys(body.skills))
+        unknown = _registry().estimate(names)["unknown"]
+        if unknown:
+            raise HTTPException(400, f"unknown skill(s): {', '.join(unknown)}")
+        tasks_repo.update(tid, {"skills": names})
+        return {"selected": names, "tokens": _registry().estimate(names)["tokens"]}
+
+    @app.get("/api/features/{fid}/skills", dependencies=guard)
+    def get_feature_skills(fid: str):
+        _feature_or_404(fid)
+        return _skills_view(fid)
+
+    @app.put("/api/features/{fid}/skills", dependencies=guard)
+    def set_feature_skills(fid: str, body: SkillsIn):
+        _feature_or_404(fid)
+        names = list(dict.fromkeys(body.skills))
+        unknown = _registry().estimate(names)["unknown"]
+        if unknown:
+            raise HTTPException(400, f"unknown skill(s): {', '.join(unknown)}")
+        features_repo.update(fid, {"skills": names})
+        return _skills_view(fid)
+
+    @app.post("/api/features/{fid}/resume", dependencies=guard)
+    def resume_feature(fid: str):
+        _feature_or_404(fid)
+        status = Budget().resume(fid)
+        _restart_held(fid)
+        return status
 
     @app.post("/api/runs", dependencies=guard)
     def start_run(body: RunIn):
         try:
-            return _launch(body.role, body.task, body.workspace, body.wait, body.feature_id)
+            return _launch(body.role, body.task, body.workspace, body.wait, body.feature_id, body.task_id)
         except LaunchError as e:
             raise HTTPException(e.status, str(e))
 
@@ -390,6 +675,17 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
         feature_id: str
         name: str
         stacked_on: str | None = None
+        owner: str = "developer_1"
+
+    class ArchitectIn(BaseModel):
+        approve: bool
+
+    class QcIn(BaseModel):
+        passed: int
+        failed: int
+
+    class ProdApproveIn(BaseModel):
+        by: str
 
     class DevDoneIn(BaseModel):
         pr_number: int
@@ -412,7 +708,7 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
 
     @app.post("/api/pipeline/tasks", dependencies=guard)
     def start_task(body: TaskIn):
-        return _flow_call(_flow().start, body.feature_id, body.name, body.stacked_on)
+        return _flow_call(_flow().start, body.feature_id, body.name, body.stacked_on, body.owner)
 
     @app.post("/api/pipeline/tasks/{tid}/dev-done", dependencies=guard)
     def task_dev_done(tid: str, body: DevDoneIn):
@@ -425,6 +721,87 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
     @app.post("/api/pipeline/tasks/{tid}/review", dependencies=guard)
     def task_review(tid: str, body: ReviewIn):
         return _flow_call(_flow().record_review, tid, body.body)
+
+    # release stages after peer review: architect, QC, the human's production gate
+    @app.post("/api/pipeline/tasks/{tid}/architect", dependencies=guard)
+    def task_architect(tid: str, body: ArchitectIn):
+        return _flow_call(Release().architect_review, tid, body.approve)
+
+    @app.post("/api/pipeline/tasks/{tid}/deploy-qc", dependencies=guard)
+    def task_deploy_qc(tid: str):
+        return _flow_call(Release().deploy_qc, tid)
+
+    @app.post("/api/pipeline/tasks/{tid}/qc", dependencies=guard)
+    def task_qc(tid: str, body: QcIn):
+        return _flow_call(Release().qc_result, tid, body.passed, body.failed)
+
+    class DocsCheckIn(BaseModel):
+        version: str
+        endpoints: list[str] = []
+        flagged: list[dict] = []
+        gaps: list[dict] = []
+
+    class DocsExceptionIn(BaseModel):
+        reason: str
+        by: str = "human"
+
+    @app.post("/api/pipeline/tasks/{tid}/docs-check", dependencies=guard)
+    def task_docs_check(tid: str, body: DocsCheckIn):
+        if tasks_repo.get(tid) is None:
+            raise HTTPException(404, "unknown task")
+        return _flow_call(DocsGate().run, tid, body.version, body.endpoints, body.flagged, body.gaps)
+
+    @app.post("/api/pipeline/tasks/{tid}/docs-exception", dependencies=guard)
+    def task_docs_exception(tid: str, body: DocsExceptionIn):
+        if tasks_repo.get(tid) is None:
+            raise HTTPException(404, "unknown task")
+        if body.by != "human":
+            raise HTTPException(403, "only the human can ship with a documented exception")
+        return _flow_call(DocsGate().exception, tid, body.reason, body.by)
+
+    class WindowIn(BaseModel):
+        percent: float
+        resets_at: float | None = None
+
+    @app.get("/api/usage-window", dependencies=guard)
+    def get_usage_window():
+        return Budget().window(time.time())
+
+    @app.put("/api/usage-window", dependencies=guard)
+    def put_usage_window(body: WindowIn):
+        if not 0 <= body.percent <= 100:
+            raise HTTPException(400, "percent must be between 0 and 100")
+        return Budget().set_window(body.percent, body.resets_at)
+
+    @app.post("/api/pipeline/tasks/{tid}/request-prod", dependencies=guard)
+    def task_request_prod(tid: str):
+        return _flow_call(Release().request_prod, tid)
+
+    @app.post("/api/pipeline/tasks/{tid}/approve-prod", dependencies=guard)
+    def task_approve_prod(tid: str, body: ProdApproveIn):
+        return _flow_call(Release().approve_prod, tid, body.by)
+
+    @app.post("/api/pipeline/tasks/{tid}/deploy-prod", dependencies=guard)
+    def task_deploy_prod(tid: str):
+        return _flow_call(Release().deployed_prod, tid)
+
+    class ProdTestsIn(BaseModel):
+        task_id: str
+        passed: int
+        failed: int
+        area: str
+
+    @app.post("/api/pipeline/prod-tests", dependencies=guard)
+    def prod_tests(body: ProdTestsIn):
+        """A production test report. A failing one raises an incident for production support, once."""
+        try:
+            return {"incident": Incidents().production_tests(body.task_id, body.passed, body.failed, body.area)}
+        except IncidentError as e:
+            raise HTTPException(404, str(e))
+
+    @app.get("/api/incidents", dependencies=guard)
+    def list_incidents():
+        return Incidents().list()
 
     @app.post("/api/pipeline/merge", dependencies=guard)
     def merge(body: MergeIn):
@@ -497,9 +874,91 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
     # ---- orchestrator chat, status, notifications, schedules (M4) ----
     def _team_context(roles: dict) -> str:
         names = {p["id"]: p["name"] for p in providers_repo.list()}
-        feats = [{"title": f["title"], "status": f["status"]} for f in features_repo.list()]
+        feats = []
+        for f in features_repo.list():
+            b = Budget().status(f["id"])
+            feats.append({"title": f["title"], "status": f["status"], "limit": b["limit"], "used": b["used"],
+                          "held": b["held"]})
         return team_snapshot(roles, db.kv_get("role_models", {}), names, status_table(list(roles) or ROLES),
-                             len(Inbox().list("open")), feats)
+                             len(Inbox().list("open")), feats,
+                             AgentRegistry().live() if registry.external_enabled() else [])
+
+    # ---- agent registry (FR-59): external agents announce themselves; the human approves them ----
+    class RegisterIn(BaseModel):
+        name: str
+        endpoint: str
+        capabilities: list[str] = []
+        description: str = ""
+        token: str | None = None
+
+    class HeartbeatIn(BaseModel):
+        name: str
+        token: str
+
+    class TaskToAgent(BaseModel):
+        task: str
+
+    @app.get("/api/registry/key", dependencies=guard)
+    def get_registry_key():
+        return {"key": registry_key()}
+
+    @app.post("/api/registry/register")
+    def registry_register(body: RegisterIn, x_registry_key: str | None = Header(None)):
+        if not key_ok(x_registry_key):
+            raise HTTPException(401, "missing or wrong registry key")
+        try:
+            out = AgentRegistry().register(body.name, body.endpoint, body.capabilities, body.description, body.token)
+        except RegistryError as e:
+            raise HTTPException(400, str(e))
+        if out["token"]:  # a first registration: the human decides whether this agent may join
+            Inbox().post("status", f"External agent wants to join: {out['agent']['name']}",
+                         f"Endpoint {out['agent']['endpoint']}. Can: {', '.join(out['agent']['capabilities']) or 'not stated'}. "
+                         "Approve or reject it on the Agents page.")
+        return {"status": out["agent"]["status"], "token": out["token"]}
+
+    @app.post("/api/registry/heartbeat")
+    def registry_heartbeat(body: HeartbeatIn):
+        try:
+            AgentRegistry().heartbeat(body.name, body.token)
+        except RegistryError as e:
+            raise HTTPException(401 if "token" in str(e) else 404, str(e))
+        return {"ok": True}
+
+    @app.get("/api/registry", dependencies=guard)
+    def registry_list():
+        return AgentRegistry().list()
+
+    def _registry_decision(fn, name: str):
+        try:
+            return fn(name)
+        except RegistryError as e:
+            raise HTTPException(404, str(e))
+
+    @app.post("/api/registry/{name}/approve", dependencies=guard)
+    def registry_approve(name: str):
+        return _registry_decision(AgentRegistry().approve, name)
+
+    @app.post("/api/registry/{name}/reject", dependencies=guard)
+    def registry_reject(name: str):
+        return _registry_decision(AgentRegistry().reject, name)
+
+    def _post_to_agent(url: str, payload: dict) -> str:
+        client = app.state.http_client or httpx.Client(timeout=30)
+        r = client.post(url, json=payload, timeout=30)
+        r.raise_for_status()
+        try:
+            return str(r.json().get("reply", r.text))
+        except ValueError:
+            return r.text
+
+    @app.post("/api/registry/{name}/task", dependencies=guard)
+    def registry_task(name: str, body: TaskToAgent):
+        try:
+            return AgentRegistry().send_task(name, body.task, _post_to_agent)
+        except RegistryError as e:
+            raise HTTPException(404 if "unknown" in str(e) else 409, str(e))
+        except httpx.HTTPError as e:
+            raise HTTPException(502, secrets_store.redact(f"the agent did not answer: {e}"))
 
     @app.get("/api/team", dependencies=guard)
     def team():
@@ -515,6 +974,25 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
                          "model": f"{names.get(m['provider_id'], 'unknown provider')} / {m['model']}" if m else None,
                          "state": state[name]["state"], "task": state[name]["task"], "steps": state[name]["steps"]})
         return rows
+
+    @app.get("/api/office", dependencies=guard)
+    def office():
+        """What the office view animates: the team rows plus every hand-off, oldest first.
+        A hand-off is real: the Orchestrator delegated a run, or a run finished and reported back."""
+        hs = [{"id": h["id"], "from": h["from"], "to": h["to"], "label": h["label"], "at": h["at"]}
+              for h in handoffs_repo.list()]
+        for r in rt.runs.list():
+            if r["status"] in ("done", "failed") and r.get("finished_at"):
+                hs.append({"id": "report-" + r["id"], "from": r["role"], "to": "orchestrator",
+                           "label": r["status"], "at": r["finished_at"]})
+        hs.sort(key=lambda h: h["at"])
+        rel = Release()
+        pending = [{"id": x["id"], "name": x["name"], "approvals": x.get("approvals", [])}
+                   for x in tasks_repo.list() if x.get("release") == "awaiting_prod_approval"]
+        return {"team": team(), "handoffs": hs[-40:], "environments": rel.environments(), "pending_prod": pending,
+                "docs_gates": [{"id": x["id"], "name": x["name"], "status": docs_state(x)} for x in tasks_repo.list()
+                               if x.get("docs_gate")],
+                "usage_window": Budget().window(time.time()), "open_incidents": len(Incidents().list(False))}
 
     @app.post("/api/team/check", dependencies=guard)
     def team_check_endpoint():
@@ -533,18 +1011,37 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
         def __init__(self, roles: dict):
             self.roles = roles
 
-        def delegate(self, role, task, area, done_criteria, context, feature_id):
+        def ask_agent(self, name, task):
+            try:
+                return AgentRegistry().send_task(name, task, _post_to_agent)
+            except RegistryError as e:
+                raise DelegationError(str(e))
+            except httpx.HTTPError as e:
+                raise DelegationError(secrets_store.redact(f"the agent did not answer: {e}"))
+
+        def delegate(self, role, task, area, done_criteria, context, feature_id, task_id=None):
+            task_label = next((ln[6:] for ln in task.splitlines() if ln.startswith("Task: ")), task)[:60]
             if role == "orchestrator":
                 raise DelegationError("the orchestrator cannot delegate to itself")
             if role not in self.roles:
                 raise DelegationError(f"unknown role {role}; roles are: {', '.join(self.roles)}")
             st = registry.get_settings()
             ws = (st["workspace_roots"] or [str(default_root())])[0]
+            sent_at = time.time()  # taken before the run starts, so the report can never be dated earlier
             try:
-                run = _launch(role, task, ws, wait=os.environ.get("AO_SYNC_RUNS") == "1", feature_id=feature_id)
+                run = _launch(role, task, ws, wait=os.environ.get("AO_SYNC_RUNS") == "1", feature_id=feature_id, task_id=task_id)
             except LaunchError as e:
                 raise DelegationError(str(e))
+            handoffs_repo.create({"from": "orchestrator", "to": role, "label": task_label, "at": sent_at,
+                                  "run_id": run["id"]})
             return {"run_id": run["id"], "role": role, "status": run["status"]}
+
+        def request_prod(self, task_id):
+            try:
+                t = Release().request_prod(task_id)
+            except FlowError as e:
+                raise DelegationError(str(e))
+            return {"task_id": task_id, "release": t["release"], "note": "the human was asked in the inbox"}
 
         def report(self, run_id):
             run = rt.runs.get(run_id)

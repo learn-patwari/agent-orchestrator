@@ -1,0 +1,5 @@
+{
+  "name": "software-delivery",
+  "version": "1.0.0",
+  "description": "The default delivery workflow: build, peer review, architect review, QC, production approval, incidents."
+}

@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent office mockup</title>
+<style>
+:root{--bg:#f6f7f9;--surface:#fff;--ink:#1c2230;--muted:#6a7385;--line:#d9dde5;--accent:#3b5bdb;
+--running:#2f9e44;--done:#3b5bdb;--failed:#e03131;--idle:#9aa3b2;font-family:system-ui,Segoe UI,sans-serif}
+@media(prefers-color-scheme:dark){:root{--bg:#12151c;--surface:#1b202a;--ink:#e8ebf2;--muted:#9aa3b2;--line:#2c3340;--accent:#748ffc;--running:#51cf66;--done:#748ffc;--failed:#ff6b6b;--idle:#6b7385}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);padding:16px;max-width:1000px;margin-inline:auto}
+h1{font-size:1.2rem;margin:0 0 4px}
+p.sub{margin:0 0 12px;color:var(--muted);font-size:.9rem}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+button{font:inherit;padding:6px 12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;cursor:pointer}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.legend{display:flex;gap:12px;font-size:.82rem;color:var(--muted);margin-left:auto;flex-wrap:wrap}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle;background:var(--idle)}
+.dot.running{background:var(--running)}.dot.done{background:var(--done)}.dot.failed{background:var(--failed)}.dot.idle{background:var(--idle)}
+canvas{display:block;width:100%;height:auto;aspect-ratio:320/200;border:1px solid var(--line);border-radius:10px;cursor:pointer;image-rendering:pixelated;background:#cfc6b4}
+.gate{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 10px;padding:10px 12px;border-radius:10px;border:1px solid var(--accent);background:var(--surface)}
+.gate small{color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{display:flex;align-items:center;font-size:.8rem;padding:4px 10px;border-radius:999px}
+.chip small{color:var(--muted);margin-left:6px}
+.panel{margin-top:12px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;min-height:72px;font-size:.9rem}
+.panel dl{display:grid;grid-template-columns:90px 1fr;gap:4px 8px;margin:6px 0 0}.panel dt{color:var(--muted)}.panel dd{margin:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line)}
+.hide{display:none}
+.note{margin-top:10px;font-size:.8rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<h1>Agents: office view (mockup)</h1>
+<p class="sub">Everyone stays at their desk. The office boy carries briefs, pull requests, builds and reports between them. Click a person to see details.</p>
+<div class="bar">
+  <button id="release">Run a release</button>
+  <button id="issue">Run a production issue</button>
+  <button id="pause" aria-pressed="false">Pause</button>
+  <button id="toggle" aria-pressed="false">Show list view</button>
+  <div class="legend" aria-label="Legend">
+    <span><i class="dot running"></i>running</span><span><i class="dot done"></i>done</span>
+    <span><i class="dot failed"></i>failed</span><span><i class="dot idle"></i>idle</span>
+  </div>
+</div>
+
+<div id="gate" class="gate hide" role="alert">
+  <strong>The manager asks you: deploy to production?</strong>
+  <button id="approve">Approve deployment</button>
+  <small>This demo approves by itself after 7 seconds.</small>
+</div>
+
+<div id="scene"><canvas id="cv" role="img" aria-label="Animated office. Agents sit at their desks, an office boy carries work between them, a cat walks around, and a receptionist waits in the lounge. Use the status buttons below for the same information as text."></canvas></div>
+<div id="list" class="hide"><div class="card"><table>
+  <thead><tr><th>Role</th><th>State</th><th>Task</th><th>Steps</th></tr></thead><tbody id="rows"></tbody></table></div></div>
+<div class="chips" id="chips" aria-label="Agent status"></div>
+<div class="panel" id="panel" aria-live="polite">Click a person, or a status button, to see its task, model, steps and last report.</div>
+<p class="note">Mockup only: the movements are scripted. In the real app the office boy is the app's message passing (not a model), and a person works or hands something over only when a real run, review, deployment or report happens. The receptionist and the cat are just for fun.</p>
+
+<script>
+const W=320,H=200,S=3;
+const cv=document.getElementById("cv"),ctx=cv.getContext("2d");
+cv.width=W*S;cv.height=H*S;
+const COLORS={running:"#2f9e44",done:"#3b5bdb",failed:"#e03131",idle:"#9aa3b2"};
+const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// ---------- layout ----------
+const ROOMS={
+  manager:{x:0,y:0,w:98,h:92,c:"#d8c9ec",name:"Manager"},
+  eng:{x:104,y:0,w:216,h:72,c:"#c4dbee",name:"Engineering"},
+  qc:{x:104,y:76,w:100,h:44,c:"#e9e0b8",name:"QC"},
+  servers:{x:212,y:76,w:108,h:44,c:"#cfd4dc",name:"Servers"},
+  support:{x:0,y:98,w:98,h:102,c:"#efd3cd",name:"Support L1-L4"},
+  lounge:{x:104,y:124,w:216,h:76,c:"#d4e8cc",name:"Lounge"}
+};
+const GAPS=[[96,76,4,10],[96,102,4,12],[146,70,8,4],[146,76,8,4],[256,70,8,4],[256,76,8,4],[146,120,8,4],[146,124,8,4]];
+const NODES={mgrOut:[101,80],supOut:[101,108],V74:[101,74],V122:[101,122],H150:[150,74],H260:[260,74],H150b:[150,122]};
+const EDGES=[["mgrOut","V74"],["mgrOut","supOut"],["supOut","V122"],["V74","H150"],["H150","H260"],["V122","H150b"]];
+const CFG={
+  manager:{lane:76,via:[96,76],in:[96,80],out:"mgrOut"},
+  eng:{lane:62,via:[150,62],in:[150,66],out:"H150"},
+  qc:{lane:114,via:[150,114],in:[150,82],out:"H150"},
+  servers:{lane:112,via:[260,112],in:[260,82],out:"H260"},
+  support:{lane:164,via:[96,164],in:[96,108],out:"supOut"},
+  lounge:{lane:130,via:[150,130],in:[150,126],out:"H150b"}
+};
+function roomAt(x,y){for(const k in ROOMS){const r=ROOMS[k];if(x>=r.x-1&&x<=r.x+r.w+1&&y>=r.y-1&&y<=r.y+r.h+1)return k}return null}
+function nodePath(a,b){
+  const dist={[a]:0},prev={},todo=new Set(Object.keys(NODES));
+  while(todo.size){
+    let u=null;for(const n of todo)if(dist[n]!==undefined&&(u===null||dist[n]<dist[u]))u=n;
+    if(u===null||u===b)break;todo.delete(u);
+    for(const [p,q] of EDGES){const v=p===u?q:q===u?p:null;if(!v)continue;
+      const d=dist[u]+Math.hypot(NODES[u][0]-NODES[v][0],NODES[u][1]-NODES[v][1]);
+      if(dist[v]===undefined||d<dist[v]){dist[v]=d;prev[v]=u}}
+  }
+  const out=[];for(let n=b;n!==undefined;n=prev[n]){out.unshift(NODES[n]);if(n===a)break}return out;
+}
+function route(from,to){
+  const ra=roomAt(from[0],from[1]),rb=roomAt(to[0],to[1]);let pts;
+  if(!ra||!rb)return [to];
+  if(ra===rb)pts=[[from[0],CFG[ra].lane],[to[0],CFG[ra].lane],to];
+  else{const A=CFG[ra],B=CFG[rb];
+    pts=[[from[0],A.lane],A.via,A.in,...nodePath(A.out,B.out),B.in,B.via,[to[0],B.lane],to]}
+  return pts;
+}
+
+const TEAM=[
+ {id:"orchestrator",desk:[36,34],shirt:"#364fc7",hair:"#222",model:"Claude / sonnet",desc:"Manager: assigns work, tracks the schedule, asks the human before production.",report:"Waiting for a request."},
+ {id:"architect",desk:[112,28],shirt:"#f59f00",hair:"#6b3f1d",model:"Claude / opus",desc:"Reviews all code before release and signs off production.",report:"Nothing to review."},
+ {id:"developer 1",desk:[160,28],shirt:"#2f9e44",hair:"#3b2412",model:"Claude / sonnet",desc:"Builds features, unit tests them, reviews developer 2's pull requests.",report:"No run yet."},
+ {id:"developer 2",desk:[208,28],shirt:"#12b886",hair:"#1b1b1b",model:"Claude / sonnet",desc:"Builds features, unit tests them, reviews developer 1's pull requests.",report:"No run yet."},
+ {id:"ci/cd",desk:[256,28],shirt:"#1098ad",hair:"#7a4b21",model:"Claude / haiku",desc:"Deploys to QC and production after the architect approves.",report:"No deployment yet."},
+ {id:"tester",desk:[168,86],shirt:"#ae3ec9",hair:"#d9a441",model:"Claude / haiku",desc:"QC: UAT, system and integration tests once unit tests are done. Signs off.",report:"No run yet."},
+ {id:"incident reporter",desk:[14,132],shirt:"#e8590c",hair:"#222",model:"not set",desc:"Watches the test reports in the app and raises incidents.",report:"No run yet."},
+ {id:"production support",desk:[58,132],shirt:"#5c7cfa",hair:"#a0522d",model:"not set",desc:"L1 to L4 support: triage and minor fixes, reviewed by the owning developer.",report:"No run yet."},
+ {id:"receptionist",desk:[262,146],shirt:"#e64980",hair:"#5c3317",model:"none (dummy)",desc:"Waits in the lounge. Not a real agent.",report:"Waiting.",dummy:true,task:"waiting"}
+];
+const SKIN=["#f1c7a0","#e0a97c","#c68642","#8d5524"];
+const P={};
+TEAM.forEach((t,i)=>{
+  const p=Object.assign({state:"idle",task:null,steps:0,path:[],moving:false,say:"",sayT:0,carry:null,res:null,speed:0},t);
+  p.home=[t.desk[0]+12,t.desk[1]+8];p.front=[t.desk[0]+12,t.desk[1]+24];
+  p.x=p.home[0];p.y=p.home[1];p.skin=SKIN[i%4];P[t.id]=p;
+});
+const people=Object.values(P);
+const boy={id:"office boy",x:214,y:160,shirt:"#868e96",hair:"#222",skin:SKIN[1],path:[],moving:false,say:"",sayT:0,carry:null,res:null,speed:95,cap:true,idle:[214,160]};
+const cat={id:"cat",x:160,y:150,path:[],moving:false,res:null,speed:34,sleep:false,say:"",sayT:0};
+const movers=[...people,boy,cat];
+const ENV={qc:{ver:"-",busy:false},prod:{ver:"-",busy:false}};
+
+// ---------- scenario engine ----------
+let paused=reduce,timers=[];
+const wait=ms=>new Promise(r=>timers.push({t:ms/1000,r}));
+const flights=[];
+function walk(p,pts){
+  if(p.res){const r=p.res;p.res=null;r()}
+  p.path=pts.map(a=>a.slice());p.moving=pts.length>0;
+  return new Promise(r=>{p.res=r;if(!pts.length){p.res=null;r()}});
+}
+const goTo=(p,dest)=>walk(p,route([p.x,p.y],dest));
+function setStatus(p,state,task){
+  p.state=state;if(task!==undefined)p.task=task;
+  if(state==="running")p.steps++;
+  if(state==="done"&&task)p.report=task+" (done)";
+  renderUI();
+}
+function speak(p,text,secs=2){p.say=text;p.sayT=secs}
+async function errand(stops){
+  for(const s of stops){
+    await goTo(boy,P[s.at].front);
+    if(s.take){speak(P[s.at],s.take,1.4);await wait(250);boy.carry=s.take}
+    if(s.give){
+      flights.push({fx:boy.x+4,fy:boy.y-12,tx:P[s.at].x,ty:P[s.at].y-8,t:0,dur:.35});boy.carry=null;
+      await wait(380);speak(P[s.at],s.say||"Got it",1.6);await wait(200);
+    }
+  }
+  goTo(boy,boy.idle);
+}
+async function deploy(env,ver){ENV[env].busy=true;await wait(1000);ENV[env].ver=ver;ENV[env].busy=false}
+let approveRes=null;
+async function humanGate(){
+  document.getElementById("gate").classList.remove("hide");
+  const clicked=new Promise(r=>{approveRes=r});
+  await Promise.race([clicked,wait(7000)]);
+  approveRes=null;document.getElementById("gate").classList.add("hide");
+}
+async function peerReview(a,b,f){
+  setStatus(a,"done",f+" PR ready");
+  await errand([{at:a.id,take:"PR: "+f},{at:b.id,give:1,say:"Reviewing"}]);
+  setStatus(b,"running","Review "+f);await wait(900);speak(b,"Approved");setStatus(b,"done","Reviewed "+f);
+}
+async function archReview(from,f){
+  const ar=P.architect;
+  await errand([{at:from.id,take:"Approved: "+f},{at:"architect",give:1,say:"Reviewing"}]);
+  setStatus(ar,"running","Review "+f+" code");await wait(900);speak(ar,"Code approved");setStatus(ar,"done","Reviewed "+f);
+}
+function settle(){people.forEach(p=>{if(!p.dummy&&p.state!=="failed")p.state="idle"});renderUI()}
+async function release(){
+  const o=P.orchestrator,ar=P.architect,d1=P["developer 1"],d2=P["developer 2"],ci=P["ci/cd"],te=P.tester;
+  setStatus(o,"running","Plan the release");speak(o,"Schedule checked");await wait(700);
+  await errand([{at:"orchestrator",take:"2 briefs"},{at:"developer 1",give:1,say:"Login: on it"},{at:"developer 2",give:1,say:"Profile: on it"}]);
+  setStatus(o,"running","Tracking work");setStatus(d1,"running","Build login");setStatus(d2,"running","Build profile");
+  await wait(1500);speak(d1,"Unit tests pass");speak(d2,"Unit tests pass");await wait(800);
+  await peerReview(d1,d2,"login");await archReview(d2,"login");
+  await peerReview(d2,d1,"profile");await archReview(d1,"profile");
+  await errand([{at:"architect",take:"Approved release"},{at:"ci/cd",give:1,say:"Deploying to QC"}]);
+  setStatus(ci,"running","Deploy to QC");await deploy("qc","v1.4");setStatus(ci,"done","QC v1.4 deployed");
+  await errand([{at:"ci/cd",take:"QC build ready"},{at:"tester",give:1,say:"Starting tests"}]);
+  for(const t of ["UAT","System test","Integration test"]){setStatus(te,"running",t);await wait(800)}
+  speak(te,"All passed");setStatus(te,"done","QC signed off");
+  await errand([{at:"tester",take:"QC sign-off"},{at:"orchestrator",give:1,say:"Thanks"}]);
+  setStatus(o,"running","Prod deployment?");speak(o,"Checking schedule");await wait(900);
+  speak(o,"Asking the human",3);await humanGate();speak(o,"Human approved");
+  await errand([{at:"orchestrator",take:"Prod request"},{at:"architect",give:1,say:"Prod signed off"}]);
+  await wait(600);
+  await errand([{at:"architect",take:"Prod approved"},{at:"ci/cd",give:1,say:"Deploying to prod"}]);
+  setStatus(ci,"running","Deploy to prod");await deploy("prod","v1.4");setStatus(ci,"done","Prod v1.4 deployed");
+  setStatus(o,"done","Release v1.4 live");speak(o,"Release v1.4 is live",2.5);
+  await wait(2000);settle();
+}
+async function issue(){
+  const o=P.orchestrator,ar=P.architect,d1=P["developer 1"],ci=P["ci/cd"],te=P.tester,ir=P["incident reporter"],ps=P["production support"];
+  setStatus(ir,"running","Watching test reports");await wait(1000);speak(ir,"Login error in report",2.4);await wait(900);
+  await errand([{at:"incident reporter",take:"Incident"},{at:"production support",give:1,say:"L1: triage"}]);
+  setStatus(ir,"done","Incident raised");setStatus(ps,"running","L2 minor fix");await wait(1200);speak(ps,"Fix ready");
+  await errand([{at:"production support",take:"Fix PR"},{at:"developer 1",give:1,say:"Login owner: reviewing"}]);
+  setStatus(ps,"done","Fix handed to review");setStatus(d1,"running","Review support fix");await wait(900);speak(d1,"Approved");setStatus(d1,"done","Reviewed fix");
+  await archReview(d1,"login fix");
+  await errand([{at:"architect",take:"Approved fix"},{at:"ci/cd",give:1,say:"Deploying to QC"}]);
+  setStatus(ci,"running","Deploy fix to QC");await deploy("qc","v1.4.1");setStatus(ci,"done","QC v1.4.1 deployed");
+  await errand([{at:"ci/cd",take:"QC build ready"},{at:"tester",give:1,say:"Retest login"}]);
+  setStatus(te,"running","Retest login");await wait(1200);speak(te,"Passed: cycle repeats",2.5);setStatus(te,"done","Retest passed");
+  await wait(2000);settle();
+}
+let pending=null;
+async function loop(){
+  const queue=[release,issue];let i=0;
+  for(;;){const fn=pending||queue[i++%queue.length];pending=null;await fn();await wait(2000)}
+}
+async function catLoop(){
+  const spots=[[70,76],[200,62],[120,114],[30,164],[160,150],[304,112],[130,130],[240,62],[190,150],[60,76]];
+  for(;;){
+    await wait(1500+Math.random()*3500);
+    const s=spots[Math.floor(Math.random()*spots.length)];
+    cat.sleep=false;await goTo(cat,s);cat.sleep=Math.random()<.5;
+  }
+}
+
+// ---------- update ----------
+function update(dt){
+  for(let i=timers.length-1;i>=0;i--){timers[i].t-=dt;if(timers[i].t<=0){const r=timers[i].r;timers.splice(i,1);r()}}
+  for(const p of movers){
+    if(p.sayT>0){p.sayT-=dt;if(p.sayT<=0)p.say=""}
+    if(p.path.length){
+      const [tx,ty]=p.path[0],dx=tx-p.x,dy=ty-p.y,d=Math.hypot(dx,dy),step=p.speed*dt;
+      if(d<=step){p.x=tx;p.y=ty;p.path.shift();if(!p.path.length){p.moving=false;const r=p.res;p.res=null;if(r)r()}}
+      else{p.x+=dx/d*step;p.y+=dy/d*step}
+    }
+  }
+  for(let i=flights.length-1;i>=0;i--){flights[i].t+=dt;if(flights[i].t>=flights[i].dur)flights.splice(i,1)}
+}
+
+// ---------- drawing ----------
+function px(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(Math.round(x),Math.round(y),w,h)}
+function paper(x,y){px(x,y,5,6,"#fff");px(x,y,5,1,"#ced4da");px(x+1,y+2,3,1,"#adb5bd");px(x+1,y+4,3,1,"#adb5bd")}
+function plant(x,y){px(x+1,y+6,4,3,"#9c5a2e");px(x,y+2,6,4,"#2f9e44");px(x+1,y,4,3,"#51cf66")}
+function rack(x,y,label,e,time){
+  px(x,y,18,24,"#343a40");px(x+1,y+1,16,22,"#495057");
+  for(let i=0;i<5;i++){const on=e.busy?Math.floor(time*8+i)%2:e.ver!=="-";px(x+3,y+3+i*4,12,2,"#212529");px(x+4,y+3+i*4,2,2,on?(e.busy?"#fcc419":"#69db7c"):"#6c757d")}
+  ctx.font="bold 4.4px ui-monospace,Consolas,monospace";ctx.fillStyle="#212529";ctx.textBaseline="top";
+  ctx.fillText(label,x+9-ctx.measureText(label).width/2,y-6);ctx.fillText(e.ver,x+9-ctx.measureText(e.ver).width/2,y+26);
+}
+function drawRooms(time){
+  px(0,0,W,H,"#cfc6b4");
+  for(const k in ROOMS){const r=ROOMS[k];px(r.x,r.y,r.w,r.h,"#5b5368");px(r.x+2,r.y+2,r.w-4,r.h-4,r.c)}
+  GAPS.forEach(g=>px(g[0],g[1],g[2],g[3],"#cfc6b4"));
+  ctx.font="bold 4.6px ui-monospace,Consolas,monospace";ctx.fillStyle="#3d3550";ctx.textBaseline="top";
+  for(const k in ROOMS){const r=ROOMS[k];ctx.fillText(r.name.toUpperCase(),r.x+5,r.y+4)}
+  px(14,50,44,22,"#b9a4da");px(16,52,40,18,"#c8b7e4");
+  px(150,4,64,12,"#fff");px(150,4,64,1,"#adb5bd");px(154,8,22,1,"#4c6ef5");px(154,11,34,1,"#e8590c");px(196,8,12,5,"#51cf66");
+  px(104+8,80,0,0,"#000");px(112,100,24,12,"#2b2f3a");px(114,102,20,8,"#38d9a9");px(116,104,10,1,"#fff");px(116,106,14,1,"#fff"); // report wall
+  rack(236,92,"QC",ENV.qc,time);rack(274,92,"PROD",ENV.prod,time);
+  plant(84,12);plant(300,10);plant(300,126);plant(86,168);plant(8,182);plant(196,80);
+  px(122,146,80,48,"#b7d6ac");px(126,150,72,40,"#c3e0b8");
+  px(128,158,52,12,"#e8590c");px(128,166,52,6,"#c2410c");px(128,158,4,14,"#c2410c");px(176,158,4,14,"#c2410c");
+  px(142,176,26,10,"#a47148");px(144,178,22,6,"#c08a5a");
+  px(298,140,14,22,"#868e96");px(300,143,10,8,"#74c0fc");px(300,154,10,3,"#fa5252");
+  px(52,112,40,8,"#fff");px(56,115,16,1,"#e03131");px(76,115,10,1,"#495057");
+  px(70,176,22,14,"#7d5535");px(72,178,18,4,"#a47148");px(72,184,18,4,"#a47148");
+}
+function drawDesk(p,time){
+  const [x,y]=p.desk;
+  px(x+9,y+2,7,10,"#343a40");
+  drawPerson(p,time,true);
+  px(x,y,24,6,"#c08a5a");px(x,y+6,24,4,"#8a5d3b");px(x,y,24,1,"#d9a674");
+  px(x+7,y+3,10,2,"#e9ecef");
+  px(x+16,y-6,8,6,"#212529");
+  const scr=p.state==="running"?(Math.floor(time*5)%2?"#69db7c":"#38d9a9"):p.state==="done"?"#74c0fc":p.state==="failed"?"#ff8787":"#495057";
+  px(x+17,y-5,6,4,scr);px(x+19,y,2,2,"#212529");
+  if(p.state==="running")for(let i=0;i<3;i++){const t=(time*1.2+i/3)%1;px(x+17+i*2,y-6-t*10,1,1,"rgba(56,217,169,"+(1-t).toFixed(2)+")")}
+}
+function drawPerson(p,time,seated){
+  const x=Math.round(p.x),y=Math.round(p.y);
+  const step=p.moving?Math.floor(time*10)%2:0,bob=p.moving&&step?1:0;
+  if(!seated)px(x-4,y-1,8,2,"rgba(0,0,0,.2)");
+  px(x-3,y-4,2,4-(step?1:0),"#2b2f3a");px(x+1,y-4,2,4-(step?0:1),"#2b2f3a");
+  px(x-3,y-10-bob,6,6,p.shirt);
+  if(p.id==="orchestrator")px(x,y-10-bob,1,5,"#fff");
+  const typing=seated&&p.state==="running"&&Math.floor(time*10)%2;
+  if(p.moving){px(x-4,y-9-bob+(step?1:0),1,4,p.skin);px(x+3,y-9-bob+(step?0:1),1,4,p.skin)}
+  else if(seated){px(x-4,y-8,1,4,p.skin);px(x+3,y-8,1,4,p.skin);px(typing?x-3:x-1,y-4,2,1,p.skin);px(typing?x+1:x+2,y-4,2,1,p.skin)}
+  else{px(x-4,y-9,1,4,p.skin);px(x+3,y-9,1,4,p.skin)}
+  px(x-3,y-15-bob,6,5,p.skin);px(x-3,y-16-bob,6,2,p.hair);px(x-4,y-15-bob,1,3,p.hair);px(x+3,y-15-bob,1,3,p.hair);
+  px(x-2,y-13-bob,1,1,"#222");px(x+1,y-13-bob,1,1,"#222");
+  if(p.cap)px(x-4,y-17-bob,8,2,"#e03131");
+  if(p.carry)paper(x+4,y-12-bob);
+}
+function drawCat(c,time){
+  const x=Math.round(c.x),y=Math.round(c.y),step=c.moving?Math.floor(time*8)%2:0;
+  px(x-5,y-1,10,2,"rgba(0,0,0,.18)");
+  if(c.sleep&&!c.moving){px(x-4,y-4,8,4,"#e8a35a");px(x-4,y-4,3,3,"#d9822b");px(x+2,y-3,3,1,"#e8a35a");return}
+  px(x-4,y-5,8,3,"#e8a35a");px(x+3,y-8,4,4,"#e8a35a");px(x+3,y-9,1,1,"#d9822b");px(x+6,y-9,1,1,"#d9822b");px(x+5,y-7,1,1,"#222");
+  px(x-4,y-2,1,2-step,"#d9822b");px(x-1,y-2,1,1+step,"#d9822b");px(x+2,y-2,1,2-step,"#d9822b");
+  const sw=Math.round(Math.sin(time*5)*1);px(x-6,y-8+sw,1,4,"#e8a35a");px(x-5,y-5,1,1,"#e8a35a");
+}
+function bubble(text,cx,y){
+  ctx.font="4.6px ui-monospace,Consolas,monospace";
+  const w=Math.ceil(ctx.measureText(text).width)+6,x=Math.round(Math.min(W-w-2,Math.max(2,cx-w/2)));
+  px(x,y-8,w,9,"#fff");px(x+2,y+1,3,2,"#fff");px(x,y-8,w,1,"#868e96");px(x,y,w,1,"#868e96");
+  ctx.fillStyle="#212529";ctx.textBaseline="top";ctx.fillText(text,x+3,y-6);
+}
+function chip(p){
+  ctx.font="bold 4.4px ui-monospace,Consolas,monospace";
+  const name=p.id,task=p.task?(p.task.length>17?p.task.slice(0,16)+"…":p.task):"";
+  const w=Math.max(ctx.measureText(name).width+10,task?ctx.measureText(task).width+6:0)+2;
+  const cx=p.desk[0]+12,x=Math.round(cx-w/2),y=p.desk[1]+11;
+  px(x,y,w,task?12:8,"rgba(255,255,255,.88)");
+  px(x+2,y+2,3,3,COLORS[p.state]);
+  ctx.fillStyle="#212529";ctx.textBaseline="top";ctx.fillText(name,x+7,y+1.6);
+  if(task){ctx.font="4px ui-monospace,Consolas,monospace";ctx.fillStyle="#495057";ctx.fillText(task,x+3,y+7)}
+}
+function draw(t){
+  ctx.setTransform(S,0,0,S,0,0);ctx.imageSmoothingEnabled=false;
+  drawRooms(t);
+  people.slice().sort((a,b)=>a.desk[1]-b.desk[1]).forEach(p=>drawDesk(p,t));
+  [boy,cat].sort((a,b)=>a.y-b.y).forEach(e=>e===cat?drawCat(e,t):drawPerson(e,t,false));
+  people.forEach(chip);
+  for(const f of flights){
+    const k=Math.min(1,f.t/f.dur),e=k*k*(3-2*k);
+    paper(f.fx+(f.tx-f.fx)*e,f.fy+(f.ty-f.fy)*e-Math.sin(k*Math.PI)*8);
+  }
+  movers.forEach(p=>{if(p.say)bubble(p.say,p.x,p.y-(p===cat?12:20))});
+  if(selected&&P[selected]){const p=P[selected];px(p.x-6,p.y-19,12,1,"#fff");px(p.x-6,p.y-19,1,3,"#fff");px(p.x+5,p.y-19,1,3,"#fff")}
+}
+let last=0;
+function frame(ts){
+  const dt=Math.min(.05,(ts-last)/1000);last=ts;
+  if(!paused)update(dt);
+  draw(ts/1000);requestAnimationFrame(frame);
+}
+
+// ---------- ui ----------
+let selected=null;
+const $=s=>document.querySelector(s);
+function renderUI(){
+  $("#chips").innerHTML="";$("#rows").innerHTML="";
+  people.forEach(p=>{
+    const b=document.createElement("button");b.className="chip";b.type="button";
+    b.innerHTML=`<i class="dot ${p.state}"></i>${p.id}<small>${p.state}</small>`;
+    b.onclick=()=>select(p.id);$("#chips").appendChild(b);
+    $("#rows").insertAdjacentHTML("beforeend",`<tr><td>${p.id}</td><td><i class="dot ${p.state}"></i>${p.state}</td><td>${p.task??"–"}</td><td>${p.steps}</td></tr>`);
+  });
+  if(selected)select(selected);
+}
+function select(id){
+  selected=id;const p=P[id];
+  $("#panel").innerHTML=`<strong>${p.id}</strong> <i class="dot ${p.state}"></i>${p.state}<dl>
+   <dt>Role</dt><dd>${p.desc}</dd><dt>Task</dt><dd>${p.task??"–"}</dd><dt>Model</dt><dd>${p.model}</dd><dt>Steps</dt><dd>${p.steps}</dd><dt>Last report</dt><dd>${p.report}</dd></dl>`;
+}
+cv.addEventListener("click",e=>{
+  const r=cv.getBoundingClientRect(),lx=(e.clientX-r.left)/r.width*W,ly=(e.clientY-r.top)/r.height*H;
+  const hit=people.filter(p=>Math.abs(lx-p.x)<8&&ly>p.y-18&&ly<p.y+3).sort((a,b)=>b.y-a.y)[0];
+  if(hit)select(hit.id);
+});
+$("#release").onclick=()=>{pending=release;timers.forEach(t=>{t.t=Math.min(t.t,.1)})};
+$("#issue").onclick=()=>{pending=issue;timers.forEach(t=>{t.t=Math.min(t.t,.1)})};
+$("#approve").onclick=()=>{if(approveRes)approveRes()};
+$("#pause").onclick=e=>{paused=!paused;e.target.setAttribute("aria-pressed",paused);e.target.textContent=paused?"Play":"Pause"};
+$("#toggle").onclick=e=>{const l=$("#list").classList.toggle("hide")===false;$("#scene").classList.toggle("hide",l);
+  e.target.setAttribute("aria-pressed",l);e.target.textContent=l?"Show office view":"Show list view"};
+if(reduce){$("#pause").textContent="Play";$("#pause").setAttribute("aria-pressed","true")}
+renderUI();requestAnimationFrame(frame);loop();catLoop();
+</script>
+</body>
+</html>

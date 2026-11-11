@@ -14,10 +14,12 @@ import time
 from .. import db
 from ..features import NotApproved, require_approved
 from ..inbox import Inbox
+from . import handoffs
 from .github import parse_review
 from .worktrees import WorktreeManager
 
 tasks = db.DocRepo("tasks")
+PEERS = ["developer_1", "developer_2"]  # each reviews the other's work
 
 
 class FlowError(Exception):
@@ -36,7 +38,9 @@ class Flow:
             raise FlowError(f"task is in state {t['status']}, expected {' or '.join(states)}")
         return t
 
-    def start(self, feature_id: str, name: str, stacked_on: str | None = None) -> dict:
+    def start(self, feature_id: str, name: str, stacked_on: str | None = None, owner: str = "developer_1") -> dict:
+        if owner not in PEERS:
+            raise FlowError("the owner must be developer_1 or developer_2")
         try:
             require_approved(feature_id)
         except NotApproved:
@@ -47,10 +51,12 @@ class Flow:
         w = self.wt.create(name, base)
         return tasks.create({"feature_id": feature_id, "name": name, "branch": w.branch, "worktree": str(w.path),
                              "base": base, "status": "developing", "rounds": 0, "tests": None, "pr_number": None,
-                             "head_sha": None, "created_at": time.time()})
+                             "head_sha": None, "created_at": time.time(), "owner": owner,
+                             "reviewer": PEERS[1 - PEERS.index(owner)], "release": None})
 
     def dev_done(self, tid: str, pr_number: int, head_sha: str) -> dict:
         t = self._get(tid, "developing", "changes_requested")
+        handoffs.record(t["owner"], t["reviewer"], "peer review")
         return tasks.update(tid, {"status": "dev_done", "pr_number": pr_number, "head_sha": head_sha, "tests": None})
 
     def record_tests(self, tid: str, passed: int, failed: int, area: str) -> dict:
@@ -68,6 +74,7 @@ class Flow:
         if r["head_sha"] != t["head_sha"]:
             raise FlowError("review is not for the current head commit")
         if r["verdict"] == "APPROVE":
+            handoffs.record(t["reviewer"], "architect", "code review")
             return tasks.update(tid, {"status": "approved"})
         if r["verdict"] == "HOLD":
             Inbox().post("status", f"Task {t['name']} is on hold", "The reviewer put this PR on hold.")
@@ -77,6 +84,7 @@ class Flow:
             Inbox().post("status", f"Task {t['name']} needs you",
                          f"{rounds} review rounds reached the limit of {self.limit}; automatic rounds stopped.")
             return tasks.update(tid, {"status": "escalated", "rounds": rounds})
+        handoffs.record(t["reviewer"], t["owner"], "changes requested")
         return tasks.update(tid, {"status": "changes_requested", "rounds": rounds})
 
     def tests_for_pr(self, pr_number: int) -> dict | None:

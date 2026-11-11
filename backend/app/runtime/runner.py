@@ -3,11 +3,13 @@ untrusted-data wrapping, loop detection, step/token limits and context compactio
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 
 from .. import db
 from ..providers.base import Completion, Message, ProviderError, ToolCall
 from ..providers.registry import record_call
+from ..rules import RULES_FOR_ALL
 from .roles import Role
 from .skills import SkillRegistry
 from .tools import ToolBox, ToolError
@@ -31,6 +33,7 @@ class Limits:
     loop_repeat: int = 3  # identical failing tool call this many times in a row halts the run
     compact_at_chars: int = 60_000
     keep_recent: int = 6
+    max_output_tokens: int = 2048
 
 
 def wrap_untrusted(tool: str, text: str) -> str:
@@ -53,8 +56,11 @@ def load_log(run_id: str) -> list[dict]:
     return sorted((m for m in messages.list() if m.get("run_id") == run_id), key=lambda m: m["seq"])
 
 
-def system_prompt(role: Role, skills: SkillRegistry | None) -> str:
-    parts = [role.body, POLICY]
+def system_prompt(role: Role, skills: SkillRegistry | None, preload: list[tuple[str, str]] | None = None) -> str:
+    parts = [role.body, POLICY, RULES_FOR_ALL]
+    if preload:  # skills the human chose for this feature: already loaded, no use_skill round trip needed
+        parts.append("Skills loaded for this task (follow them):\n" +
+                     "\n\n".join(f"## {n}\n{b}" for n, b in preload))
     if skills and role.skills:
         cat = skills.catalog(role.skills)
         if cat:
@@ -63,8 +69,9 @@ def system_prompt(role: Role, skills: SkillRegistry | None) -> str:
     return "\n\n".join(parts)
 
 
-def build_context(role: Role, skills: SkillRegistry | None, log: list[dict]) -> list[Message]:
-    ctx = [Message("system", system_prompt(role, skills))]
+def build_context(role: Role, skills: SkillRegistry | None, log: list[dict],
+                  preload: list[tuple[str, str]] | None = None) -> list[Message]:
+    ctx = [Message("system", system_prompt(role, skills, preload))]
     summary = next((m for m in reversed(log) if m["kind"] == "summary"), None)
     start = 0
     if summary:
@@ -80,23 +87,26 @@ def _chars(ctx: list[Message]) -> int:
 
 class Runner:
     def __init__(self, provider, model: str, role: Role, toolbox: ToolBox, skills: SkillRegistry | None = None,
-                 limits: Limits | None = None, provider_id: str = ""):
+                 limits: Limits | None = None, provider_id: str = "", gate=None, preload=None):
         self.p, self.model, self.role, self.tb = provider, model, role, toolbox
         self.skills, self.limits, self.provider_id = skills, limits or Limits(), provider_id
+        self.preload = preload or []
+        self.gate = gate  # () -> reason or None; a reason puts the run on hold, it can continue later
 
     # -- persistence helpers --
     def _append(self, run_id: str, m: Message, kind: str = "msg", **extra) -> None:
         seq = max([x["seq"] for x in load_log(run_id)] + [0]) + 1
         messages.create({**_to_doc(run_id, seq, m, kind), **extra})
 
-    def start(self, task: str, workspace: str) -> dict:
+    def start(self, task: str, workspace: str, feature_id: str | None = None, task_id: str | None = None) -> dict:
         run = runs.create({"role": self.role.name, "task": task, "workspace": workspace, "status": "running",
-                           "steps": 0, "tokens": 0, "error": None, "provider_id": self.provider_id, "model": self.model})
+                           "steps": 0, "tokens": 0, "error": None, "provider_id": self.provider_id, "model": self.model,
+                           "feature_id": feature_id, "task_id": task_id})
         self._append(run["id"], Message("user", task))
         return run
 
     def _finish(self, run_id: str, status: str, error: str | None = None, **extra) -> dict:
-        return runs.update(run_id, {"status": status, "error": error, **extra})
+        return runs.update(run_id, {"status": status, "error": error, "finished_at": time.time(), **extra})
 
     def _exec_calls(self, run_id: str, calls: list[ToolCall], done: set[str]) -> str | None:
         """Run tool calls that have no persisted result yet. Returns a halt reason or None."""
@@ -141,6 +151,13 @@ class Runner:
 
     # -- main loop --
     def run(self, run_id: str) -> dict:
+        try:
+            return self._run(run_id)
+        finally:
+            if hasattr(self.tb, "close"):
+                self.tb.close()  # stops any MCP servers this run started
+
+    def _run(self, run_id: str) -> dict:
         lim = self.limits
         while True:
             run = runs.get(run_id)
@@ -158,13 +175,15 @@ class Runner:
                 return self._finish(run_id, "halted", "max_steps")
             if run["tokens"] >= lim.max_total_tokens:
                 return self._finish(run_id, "halted", "token_budget")
-            ctx = build_context(self.role, self.skills, log)
+            if self.gate and (why := self.gate()):
+                return self._finish(run_id, "held", why)
+            ctx = build_context(self.role, self.skills, log, self.preload)
             self._compact(run_id, ctx, log)
             if len(load_log(run_id)) != len(log):
-                ctx = build_context(self.role, self.skills, load_log(run_id))
+                ctx = build_context(self.role, self.skills, load_log(run_id), self.preload)
             try:
                 c: Completion = self.p.complete(self.model, ctx, tools=self.tb.specs_for(self.role.tools) or None,
-                                                max_tokens=2048)
+                                                max_tokens=lim.max_output_tokens)
             except ProviderError as e:
                 return self._finish(run_id, "failed", f"{e.kind}: {e}")
             record_call(self.role.name, self.provider_id, self.model, c.usage, run_id)

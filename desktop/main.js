@@ -61,16 +61,25 @@ async function boot() {
   for (const [port, name] of [[BACKEND_PORT, "backend"], [UI_PORT, "UI"]]) {
     if (!(await portFree(port))) throw new Error(`Port ${port} (${name}) is already in use. Close the other program or set AO_DESKTOP_${name === "UI" ? "UI" : "BACKEND"}_PORT.`);
   }
-  if (!fs.existsSync(path.join(ROOT, "frontend", ".next"))) {
-    throw new Error("The UI is not built yet. Run build-frontend.cmd once, then start again.");
-  }
   const dataDir = path.join(app.getPath("userData"), "data");
   fs.mkdirSync(dataDir, { recursive: true });
-  const python = process.env.AO_PYTHON || "python";
-  start(python, ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", String(BACKEND_PORT)],
-    { cwd: path.join(ROOT, "backend"), env: { ...process.env, AO_DATA_DIR: dataDir } }, "backend");
-  start(process.execPath, [path.join(ROOT, "frontend", "node_modules", "next", "dist", "bin", "next"), "start", "-p", String(UI_PORT), "-H", "127.0.0.1"],
-    { cwd: path.join(ROOT, "frontend"), env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } }, "ui");
+  const env = { ...process.env, AO_DATA_DIR: dataDir };
+  if (app.isPackaged) {
+    // installed build: the frozen backend and the standalone UI server ship inside the installer, nothing else to install
+    const res = process.resourcesPath;
+    start(path.join(res, "backend", "ao-backend.exe"), ["--port", String(BACKEND_PORT)], { cwd: path.join(res, "backend"), env }, "backend");
+    start(process.execPath, [path.join(res, "ui", "server.js")],
+      { cwd: path.join(res, "ui"), env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", PORT: String(UI_PORT), HOSTNAME: "127.0.0.1" } }, "ui");
+  } else {
+    if (!fs.existsSync(path.join(ROOT, "frontend", ".next"))) {
+      throw new Error("The UI is not built yet. Run build-frontend.cmd once, then start again.");
+    }
+    const python = process.env.AO_PYTHON || "python";
+    start(python, ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", String(BACKEND_PORT)],
+      { cwd: path.join(ROOT, "backend"), env }, "backend");
+    start(process.execPath, [path.join(ROOT, "frontend", "node_modules", "next", "dist", "bin", "next"), "start", "-p", String(UI_PORT), "-H", "127.0.0.1"],
+      { cwd: path.join(ROOT, "frontend"), env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } }, "ui");
+  }
   await waitFor(`http://127.0.0.1:${BACKEND_PORT}/docs`, "backend");
   await waitFor(`http://127.0.0.1:${UI_PORT}/`, "UI");
 }

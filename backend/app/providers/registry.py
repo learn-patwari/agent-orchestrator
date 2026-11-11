@@ -19,7 +19,12 @@ EXTERNAL_TYPE = "external"  # reserved: delegating to another product/CLI/hosted
 def get_settings() -> dict:
     stored = db.kv_get("settings", {})
     flags = {**DEFAULT_SETTINGS["feature_flags"], **stored.get("feature_flags", {})}
-    return {**DEFAULT_SETTINGS, **stored, "feature_flags": flags}
+    merged = {**DEFAULT_SETTINGS, **stored, "feature_flags": flags}
+    from ..plugins import Plugins  # lazy: plugins import the runtime, which imports this module
+    roles, skills = Plugins().dirs()  # enabled plugins add their folders after the configured ones
+    merged["role_dirs"] = [*merged["role_dirs"], *roles]
+    merged["skill_paths"] = [*merged["skill_paths"], *skills]
+    return merged
 
 
 def external_enabled() -> bool:

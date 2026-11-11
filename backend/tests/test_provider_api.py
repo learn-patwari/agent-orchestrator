@@ -43,16 +43,16 @@ def test_external_providers_hidden_behind_flag(authed):
 
 def test_role_models_and_usage_cost(authed):
     pid = add(authed).json()["id"]
-    assert authed.put("/api/role-models/developer", json={"provider_id": "nope", "model": "m"}).status_code == 400
+    assert authed.put("/api/role-models/developer_1", json={"provider_id": "nope", "model": "m"}).status_code == 400
     assert authed.put("/api/role-models/ghost", json={"provider_id": pid, "model": "m"}).status_code == 404
-    m = authed.put("/api/role-models/developer", json={"provider_id": pid, "model": "m1"}).json()
-    assert m["developer"]["model"] == "m1"
+    m = authed.put("/api/role-models/developer_1", json={"provider_id": pid, "model": "m1"}).json()
+    assert m["developer_1"]["model"] == "m1"
     assert authed.put("/api/prices", json={"m1": {"input": 1.0}}).status_code == 400
     authed.put("/api/prices", json={"m1": {"input": 2.0, "output": 4.0}})
     from app.providers.base import Usage
     from app.providers.registry import record_call
-    record_call("developer", pid, "m1", Usage(1_000_000, 500_000))
-    u = authed.get("/api/usage").json()["by_role"]["developer"]
+    record_call("developer_1", pid, "m1", Usage(1_000_000, 500_000))
+    u = authed.get("/api/usage").json()["by_role"]["developer_1"]
     assert u["calls"] == 1 and u["cost_usd"] == 4.0
 
 

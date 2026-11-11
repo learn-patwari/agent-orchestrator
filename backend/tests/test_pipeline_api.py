@@ -112,3 +112,42 @@ def test_merge_without_recorded_tests_is_refused_by_the_gate(api):
     configure(api, reviewer_can_merge=True)
     out = api.post("/api/pipeline/merge", json={"numbers": [5]}).json()  # no task/tests recorded for PR 5
     assert out["merged"] == [] and any("tests" in r for r in out["refused"][0]["reasons"])
+
+
+def _to_approved(api, owner=None):
+    configure(api)
+    body = {"feature_id": api.fid, "name": "t1", **({"owner": owner} if owner else {})}
+    t = api.post("/api/pipeline/tasks", json=body).json()
+    base = f"/api/pipeline/tasks/{t['id']}"
+    api.post(f"{base}/dev-done", json={"pr_number": 5, "head_sha": H1})
+    api.post(f"{base}/tests", json={"passed": 4, "failed": 0, "area": "x"})
+    api.post(f"{base}/review", json={"body": f"Verdict: APPROVE\nHead: {H1}"})
+    return base
+
+
+def test_release_over_api_shows_in_the_office_feed_and_waits_for_the_human(api):
+    base = _to_approved(api, owner="developer_2")
+    assert api.post(f"{base}/request-prod").status_code == 409  # cannot skip QC
+    assert api.post(f"{base}/architect", json={"approve": True}).json()["release"] == "architect_approved"
+    assert api.post(f"{base}/deploy-qc").json()["release"] == "in_qc"
+    assert api.get("/api/office").json()["environments"]["qc"]["version"] == H1[:7]
+    from app.pipeline.flow import tasks
+    tasks.update(base.rsplit("/", 1)[1], {"docs_gate": {"status": "PASS", "failed": []}})
+    assert api.post(f"{base}/qc", json={"passed": 6, "failed": 0}).json()["release"] == "qc_passed"
+    assert api.post(f"{base}/request-prod").json()["release"] == "awaiting_prod_approval"
+    feed = api.get("/api/office").json()
+    assert feed["pending_prod"] == [{"id": base.rsplit("/", 1)[1], "name": "t1", "approvals": []}]
+    assert api.post(f"{base}/approve-prod", json={"by": "human"}).json()["release"] == "awaiting_prod_approval"
+    assert api.post(f"{base}/deploy-prod").status_code == 409  # still needs the architect
+    assert api.post(f"{base}/approve-prod", json={"by": "architect"}).json()["release"] == "approved_for_prod"
+    assert api.post(f"{base}/deploy-prod").json()["release"] == "in_prod"
+    feed = api.get("/api/office").json()
+    assert feed["environments"]["prod"]["name"] == "t1" and feed["pending_prod"] == []
+    assert ("developer_2", "developer_1") in [(h["from"], h["to"]) for h in feed["handoffs"]]
+    assert feed["handoffs"][-1]["to"] == "cicd"
+
+
+def test_release_endpoints_need_auth(env):
+    with TestClient(create_app()) as c:
+        assert c.post("/api/pipeline/tasks/x/architect", json={"approve": True}).status_code == 401
+        assert c.post("/api/pipeline/tasks/x/approve-prod", json={"by": "human"}).status_code == 401
