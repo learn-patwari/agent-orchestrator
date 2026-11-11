@@ -177,6 +177,11 @@ export default function Providers() {
           placeholder={cli ? "Leave empty to find it automatically…" : "https://api.example.com/v1"}
           value={f.base_url} onChange={(e) => setF({ ...f, base_url: e.target.value })} required={!cli}
         />
+        {cli && (
+          <p className="field-note">
+            Best left empty: the app finds the claude program that came with the Claude desktop app. If you fill it in, give the full path to claude.exe (quotes or a leading &amp; from PowerShell are removed).
+          </p>
+        )}
         {!cli && (
           <>
             <label htmlFor="k">API key{needsKey ? "" : " (not needed)"}</label>

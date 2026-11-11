@@ -129,3 +129,71 @@ def test_tools_offered_add_a_last_reminder_that_no_native_tools_exist():
     plain = {}
     mk(fake("ok", seen=plain)).complete("sonnet", [Message("user", "go")])
     assert "Reminder" not in plain["stdin"]
+
+
+# ---- the program path the person types in the Providers page (found live: a pasted PowerShell call failed with WinError 2)
+
+PASTED = [
+    r'& "C:\Users\a b\claude.exe"',   # copied from a PowerShell prompt
+    r'&"C:\Users\a b\claude.exe"',
+    r"& 'C:\Users\a b\claude.exe'",
+    r'"C:\Users\a b\claude.exe"',
+    r"'C:\Users\a b\claude.exe'",
+    r'  &   "C:\Users\a b\claude.exe"  ',
+    r"C:\Users\a b\claude.exe",
+]
+
+
+@pytest.mark.parametrize("typed", PASTED)
+def test_a_pasted_powershell_call_or_quoted_path_becomes_the_plain_path(typed):
+    from app.providers.claude_cli import normalise_exe
+    assert normalise_exe(typed) == r"C:\Users\a b\claude.exe"
+
+
+@pytest.mark.parametrize("typed", ["", "   ", "&", '& ""', '""'])
+def test_nothing_usable_typed_means_auto_detect(typed):
+    from app.providers.claude_cli import normalise_exe
+    assert normalise_exe(typed) == ""
+
+
+def test_the_provider_runs_the_cleaned_path_not_the_pasted_text():
+    seen = {}
+    mk(fake("ok", seen=seen), exe='& "C:/x y/claude.exe"').complete("haiku", [Message("user", "go")])
+    assert seen["argv"][0] == "C:/x y/claude.exe"
+
+
+def test_an_empty_or_junk_field_falls_back_to_the_detected_program(monkeypatch):
+    from app.providers import claude_cli
+    monkeypatch.setattr(claude_cli, "find_claude", lambda: "C:/found/claude.exe")
+    assert ClaudeCliProvider("& ", "").exe == "C:/found/claude.exe"
+    assert ClaudeCliProvider("", "").exe == "C:/found/claude.exe"
+
+
+def test_a_folder_that_holds_claude_exe_is_accepted(tmp_path):
+    (tmp_path / "claude.exe").write_text("x")
+    assert ClaudeCliProvider(f'& "{tmp_path}"', "").exe == str(tmp_path / "claude.exe")
+
+
+def test_a_missing_program_says_what_to_enter():
+    def missing(argv, stdin, env, timeout):
+        raise FileNotFoundError(2, "The system cannot find the file specified")
+    with pytest.raises(NetworkError) as e:
+        mk(missing, exe='& "C:/nope/claude.exe"').complete("m", [Message("user", "x")])
+    msg = str(e.value)
+    assert "Program not found: C:/nope/claude.exe" in msg
+    assert "auto-detect" in msg and "claude.exe" in msg
+    assert "& " not in msg and "WinError" not in msg
+
+
+def test_a_program_that_cannot_be_started_for_another_reason_keeps_the_reason():
+    def denied(argv, stdin, env, timeout):
+        raise PermissionError(13, "Access is denied")
+    with pytest.raises(NetworkError, match="Access is denied"):
+        mk(denied, exe="C:/x/claude.exe").complete("m", [Message("user", "x")])
+
+
+def test_test_connection_reports_the_clear_message_for_a_pasted_bad_path(authed):
+    r = authed.post("/api/providers", json={"name": "cli", "type": "claude_cli", "base_url": '& "C:/nope/claude.exe"'})
+    assert r.status_code in (200, 201)
+    res = authed.post(f"/api/providers/{r.json()['id']}/test", json={"model": "haiku"}).json()
+    assert res["ok"] is False and "Program not found: C:/nope/claude.exe" in res["error"]

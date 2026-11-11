@@ -33,6 +33,25 @@ def _default_runner(argv: list[str], stdin: str, env: dict, timeout: float) -> t
     return r.returncode, r.stdout, r.stderr
 
 
+def normalise_exe(value: str) -> str:
+    """What people paste is not always a path: a PowerShell call such as & "C:/.../claude.exe", or a quoted path.
+    Returns the plain path, or "" when nothing usable was typed (the caller then auto-detects)."""
+    s = (value or "").strip()
+    if s.startswith("&"):
+        s = s[1:].strip()
+    return s.strip("\"'").strip()
+
+
+def _resolve(value: str) -> str:
+    """A cleaned path; a folder that holds the program stands for the program."""
+    s = normalise_exe(value)
+    if s and Path(s).is_dir():
+        for name in ("claude.exe", "claude"):
+            if (Path(s) / name).is_file():
+                return str(Path(s) / name)
+    return s
+
+
 def find_claude() -> str:
     """The program on PATH, else the newest copy bundled with the Claude desktop app (Windows)."""
     appdata = os.environ.get("APPDATA")
@@ -69,7 +88,7 @@ def _classify(text: str) -> ProviderError:
 class ClaudeCliProvider(LLMProvider):
     def __init__(self, base_url: str = "", api_key: str = "", *, runner: Callable | None = None,
                  timeout: float = 300.0, **_):
-        self.exe = base_url.strip() or find_claude()
+        self.exe = _resolve(base_url) or find_claude()
         self.run, self.timeout = runner or _default_runner, timeout
         self.base_url, self.api_key, self.max_retries, self.backoff = self.exe, "", 0, 0
 
@@ -96,6 +115,9 @@ class ClaudeCliProvider(LLMProvider):
             code, out, err = self.run(argv, _flatten(messages) + (REMINDER if tools else ""), env, self.timeout)
         except (TimeoutError, subprocess.TimeoutExpired) as e:
             raise NetworkError(f"claude did not answer in time: {e}") from e
+        except FileNotFoundError as e:
+            raise NetworkError(f"Program not found: {self.exe}. Leave this empty to auto-detect, "
+                               "or paste the full path to claude.exe.") from e
         except OSError as e:
             raise NetworkError(f"could not run claude ({self.exe}): {e}") from e
         try:

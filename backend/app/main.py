@@ -33,6 +33,7 @@ from .pipeline.worktrees import WorktreeError, WorktreeManager
 from .orchestrator import DelegationError, Orchestrator, check_workspace, default_root, status_table, team_check, team_snapshot
 from .scheduler import Scheduler, budget_percent_used
 from .providers import pricing, registry
+from .providers.claude_cli import normalise_exe
 from .providers.presets import PRESETS
 from .providers.base import ProviderError
 from .runtime import runner as rt
@@ -168,7 +169,7 @@ def create_app(http_client=None, gh_factory=None) -> FastAPI:
         if body.type not in registry.allowed_types():
             raise HTTPException(400, f"provider type not available: {body.type}")
         rec = providers_repo.create({
-            "name": body.name, "type": body.type, "base_url": body.base_url.rstrip("/"),
+            "name": body.name, "type": body.type, "base_url": (normalise_exe(body.base_url) if body.type == "claude_cli" else body.base_url.rstrip("/")),
             "api_key_enc": secrets_store.encrypt(body.api_key),
         })
         return _public(rec)
