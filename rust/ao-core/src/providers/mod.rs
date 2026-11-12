@@ -33,6 +33,11 @@ pub fn allowed_types(external_enabled: bool) -> Vec<&'static str> {
 
 /// Builds the adapter for a stored provider record (the key is decrypted here and nowhere else).
 pub fn build(record: &Value) -> Result<Box<dyn Provider>, BuildError> {
+    build_with(record, None)
+}
+
+/// Like `build`, with the HTTP transport to use (tests inject one; the app passes none).
+pub fn build_with(record: &Value, transport: Option<base::Transport>) -> Result<Box<dyn Provider>, BuildError> {
     let kind = record["type"].as_str().unwrap_or("");
     if kind == EXTERNAL_TYPE {
         return Err(BuildError::External);
@@ -43,8 +48,8 @@ pub fn build(record: &Value) -> Result<Box<dyn Provider>, BuildError> {
     let base_url = record["base_url"].as_str().unwrap_or("");
     let key = crate::secrets::decrypt(record["api_key_enc"].as_str().unwrap_or("")).map_err(|e| BuildError::Secret(e.to_string()))?;
     Ok(match kind {
-        "openai" => Box::new(http::HttpProvider::new(http::Protocol::OpenAi, base_url, &key, None)),
-        "anthropic" => Box::new(http::HttpProvider::new(http::Protocol::Anthropic, base_url, &key, None)),
+        "openai" => Box::new(http::HttpProvider::new(http::Protocol::OpenAi, base_url, &key, transport.clone())),
+        "anthropic" => Box::new(http::HttpProvider::new(http::Protocol::Anthropic, base_url, &key, transport.clone())),
         _ => Box::new(claude_cli::ClaudeCliProvider::new(base_url, None)),
     })
 }
