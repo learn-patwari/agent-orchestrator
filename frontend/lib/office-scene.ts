@@ -50,14 +50,14 @@ const CFG: Record<string, { lane: number; via: Pt; in: Pt; out: string }> = {
 // role id from the backend -> desk and look
 const SEATS: { id: string; label: string; desk: Pt; shirt: string; hair: string; acc: string; dummy?: boolean }[] = [
   { id: "orchestrator", label: "orchestrator", desk: [36, 34], shirt: "#364fc7", hair: "#222", acc: "tie" },
-  { id: "architect", label: "architect", desk: [112, 28], shirt: "#f59f00", hair: "#6b3f1d", acc: "glasses" },
-  { id: "developer_1", label: "developer 1", desk: [160, 28], shirt: "#2f9e44", hair: "#3b2412", acc: "phones" },
-  { id: "developer_2", label: "developer 2", desk: [208, 28], shirt: "#12b886", hair: "#1b1b1b", acc: "phones" },
-  { id: "cicd", label: "ci/cd", desk: [256, 28], shirt: "#1098ad", hair: "#7a4b21", acc: "cap" },
+  { id: "architect", label: "architect", desk: [110, 28], shirt: "#f59f00", hair: "#6b3f1d", acc: "glasses" },
+  { id: "developer_1", label: "developer 1", desk: [152, 28], shirt: "#2f9e44", hair: "#3b2412", acc: "phones" },
+  { id: "developer_2", label: "developer 2", desk: [194, 28], shirt: "#12b886", hair: "#1b1b1b", acc: "phones" },
+  { id: "cicd", label: "ci/cd", desk: [236, 28], shirt: "#1098ad", hair: "#7a4b21", acc: "cap" },
   { id: "tester", label: "tester", desk: [168, 86], shirt: "#ae3ec9", hair: "#d9a441", acc: "bigglasses" },
   { id: "incident_reporter", label: "incident rep", desk: [14, 132], shirt: "#e8590c", hair: "#222", acc: "hardhat" },
   { id: "production_support", label: "prod support", desk: [58, 132], shirt: "#5c7cfa", hair: "#a0522d", acc: "headset" },
-  { id: "technical_writer", label: "tech writer", desk: [120, 150], shirt: "#7048e8", hair: "#4a2c17", acc: "pencil" },
+  { id: "technical_writer", label: "tech writer", desk: [278, 28], shirt: "#7048e8", hair: "#4a2c17", acc: "pencil" },
   { id: "receptionist", label: "receptionist", desk: [262, 146], shirt: "#e64980", hair: "#5c3317", acc: "bun", dummy: true },
 ];
 const SKIN = ["#f1c7a0", "#e0a97c", "#c68642", "#8d5524"];
@@ -297,7 +297,7 @@ export class OfficeScene {
     // servers
     this.rack(236, 92, "QC", this.env.qc, t); this.rack(274, 92, "PROD", this.env.prod, t);
     // plants
-    [[84, 12], [300, 12], [300, 124], [84, 168], [8, 182], [196, 80]].forEach(([x, y]) => this.plant(x, y, t));
+    [[84, 12], [307, 11], [300, 124], [84, 168], [8, 182], [196, 80]].forEach(([x, y]) => this.plant(x, y, t));
     // lounge: rug, sofa, coffee table
     this.rug(122, 146, 80, 48, "#8fc98a", "#b4e2ad");
     this.box(128, 154, 52, 5, 3, "#d9660f", 0.9);
@@ -450,7 +450,7 @@ export class OfficeScene {
   }
   private chip(p: Person) {
     const c = this.ctx; c.font = `bold 4.3px ${FONT}`;
-    const task = p.task ? (p.task.length > 17 ? p.task.slice(0, 16) + "…" : p.task) : "";
+    const task = p.task ? (p.task.length > 15 ? p.task.slice(0, 14) + "…" : p.task) : "";
     const w = Math.max(c.measureText(p.label).width + 11, task ? c.measureText(task).width + 7 : 0) + 1;
     const x = p.desk[0] + 12 - w / 2, y = p.desk[1] + 14.5;
     this.box(x, y, w, task ? 12.5 : 8, 4, "rgba(255,255,255,.95)", 0.7);
