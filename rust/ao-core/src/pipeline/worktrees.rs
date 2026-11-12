@@ -27,7 +27,9 @@ pub struct Worktree {
 }
 
 fn git(cwd: &Path, args: &[&str]) -> Result<String, WorktreeError> {
-    let o = Command::new("git").args(args).current_dir(cwd).output().map_err(|e| WorktreeError::Git(e.to_string()))?;
+    let mut cmd = Command::new("git");
+    crate::proc::hide_window(&mut cmd);
+    let o = cmd.args(args).current_dir(cwd).output().map_err(|e| WorktreeError::Git(e.to_string()))?;
     if !o.status.success() {
         let (err, out) = (String::from_utf8_lossy(&o.stderr), String::from_utf8_lossy(&o.stdout));
         return bad(if err.trim().is_empty() { out } else { err }.trim().to_string());

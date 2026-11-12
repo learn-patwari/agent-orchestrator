@@ -62,7 +62,9 @@ impl StdioTransport {
 
     fn start(&mut self) -> Result<(), McpError> {
         let Some((prog, args)) = self.command.split_first() else { return err("could not start the server: empty command") };
-        let mut child = Command::new(prog)
+        let mut cmd = Command::new(prog);
+        crate::proc::hide_window(&mut cmd);
+        let mut child = cmd
             .args(args)
             .envs(self.env.iter().map(|(k, v)| (k, v)))
             .stdin(Stdio::piped())

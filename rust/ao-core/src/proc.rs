@@ -13,9 +13,20 @@ pub enum RunError {
     Io(String),
 }
 
+/// Keeps a child process from opening its own console window on Windows (the app has no console of its own).
+pub fn hide_window(cmd: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    cmd
+}
+
 /// (exit code, stdout, stderr). The environment is exactly `env`; nothing is inherited.
 pub fn run(argv: &[String], cwd: Option<&Path>, env: &HashMap<String, String>, stdin: &str, timeout: f64) -> Result<(i32, String, String), RunError> {
     let mut cmd = Command::new(&argv[0]);
+    hide_window(&mut cmd);
     cmd.args(&argv[1..]).env_clear().envs(env).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     if let Some(c) = cwd {
         cmd.current_dir(c);
