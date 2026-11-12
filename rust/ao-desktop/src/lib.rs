@@ -66,3 +66,13 @@ pub fn start_backend(port: u16, ui: Option<PathBuf>) -> Result<(), String> {
 async fn axum_serve(listener: tokio::net::TcpListener, app: ao_server::Router) -> std::io::Result<()> {
     ao_server::serve(listener, app).await
 }
+
+/// The folders the installer ships next to the program: built-in roles and skills, and the shipped plugins.
+/// Looks directly beside the program and under `resources`, whichever the bundler used.
+pub fn bundled_dirs(exe_dir: Option<&Path>) -> (Option<PathBuf>, Option<PathBuf>) {
+    let find = |name: &str, marker: &str| {
+        let d = exe_dir?;
+        [d.join(name), d.join("resources").join(name)].into_iter().find(|c| c.join(marker).exists())
+    };
+    (find("builtin", "roles"), find("plugins", "software-delivery"))
+}

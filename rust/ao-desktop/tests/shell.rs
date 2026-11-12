@@ -58,3 +58,14 @@ fn the_backend_runs_in_process_and_serves_api_and_ui() {
     assert_eq!(status(port, "/api/settings"), 401);
     assert_eq!(status(port, "/"), 200);
 }
+
+#[test]
+fn installed_builtin_roles_and_plugins_are_found_beside_the_program() {
+    let t = tempfile::tempdir().unwrap();
+    assert_eq!(ao_desktop::bundled_dirs(Some(t.path())), (None, None));
+    std::fs::create_dir_all(t.path().join("builtin/roles")).unwrap();
+    std::fs::create_dir_all(t.path().join("resources/plugins/software-delivery")).unwrap();
+    let (b, p) = ao_desktop::bundled_dirs(Some(t.path()));
+    assert_eq!(b, Some(t.path().join("builtin")));
+    assert_eq!(p, Some(t.path().join("resources/plugins")));
+}

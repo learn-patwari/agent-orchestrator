@@ -1,7 +1,7 @@
 //! Agent Orchestrator for Windows: starts the backend in this process, then opens a window on it.
 //! `--smoke` starts the backend, checks it answers, and exits (used by the installer smoke test).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-use ao_desktop::{data_dir, pick_port, start_backend, ui_dir, DEFAULT_PORT};
+use ao_desktop::{bundled_dirs, data_dir, pick_port, start_backend, ui_dir, DEFAULT_PORT};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
@@ -25,6 +25,13 @@ fn boot() -> Result<u16, String> {
     std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
     std::env::set_var("AO_DATA_DIR", &dir);
     let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf()));
+    let (builtin, plugins) = bundled_dirs(exe_dir.as_deref());
+    if let Some(b) = builtin {
+        std::env::set_var("AO_BUILTIN_DIR", b);
+    }
+    if let Some(p) = plugins {
+        std::env::set_var("AO_PLUGINS_DIR", p);
+    }
     let ui = ui_dir(env("AO_UI_DIR").as_deref(), exe_dir.as_deref());
     if ui.is_none() {
         return Err("The UI files were not found. Build them once with build-frontend-static.cmd, or set AO_UI_DIR.".into());
