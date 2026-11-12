@@ -1,5 +1,6 @@
 //! The route groups. Each module mounts its routes on `Routes`; `all()` puts them together.
 mod core;
+mod extras;
 
 use crate::{ApiError, Routes};
 use ao_core::runtime::skills::SkillRegistry;
@@ -7,7 +8,7 @@ use serde_json::Value;
 use std::path::PathBuf;
 
 pub fn all() -> Routes {
-    core::mount(Routes::new())
+    extras::mount(core::mount(Routes::new()))
 }
 
 pub(crate) fn settings() -> Result<Value, ApiError> {
