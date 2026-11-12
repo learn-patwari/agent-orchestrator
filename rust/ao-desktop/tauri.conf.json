@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Agent Orchestrator",
+  "version": "0.1.0",
+  "identifier": "com.agentorchestrator.app",
+  "build": { "frontendDist": "stub" },
+  "app": {
+    "windows": [],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["icons/icon.ico"]
+  }
+}

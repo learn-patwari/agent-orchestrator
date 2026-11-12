@@ -1,6 +1,8 @@
 [workspace]
 resolver = "2"
-members = ["ao-core", "ao-server"]
+members = ["ao-core", "ao-server", "ao-desktop"]
+# plain `cargo test` leaves the Tauri shell out (it is slow to build); use `-p ao-desktop` for it
+default-members = ["ao-core", "ao-server"]
 
 [workspace.package]
 edition = "2021"

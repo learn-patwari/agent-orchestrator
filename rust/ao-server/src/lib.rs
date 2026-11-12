@@ -3,8 +3,10 @@
 //! Handlers are plain synchronous functions `fn(&AppState, &Req) -> R`. The framework below mounts each one on axum,
 //! checks the session (cookie or bearer token) for guarded routes, parses the JSON body, runs the handler on a blocking
 //! thread (the core is synchronous) and turns the result into `{"detail": ...}` errors like FastAPI did.
+pub use axum::{serve, Router};
 pub mod background;
 pub mod routes;
+pub mod ui;
 pub mod runs;
 
 use ao_core::providers::base::{Provider, Transport};
@@ -14,7 +16,6 @@ use axum::extract::{Query, RawPathParams, State};
 use axum::http::{header, HeaderMap, Method, StatusCode};
 use axum::response::Response;
 use axum::routing::{on, MethodFilter};
-use axum::Router;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -218,4 +219,13 @@ impl Default for Routes {
 pub fn app(st: AppState) -> Router {
     let _ = ao_core::db::init_db();
     routes::all().into_router(st)
+}
+
+/// The API plus, when a UI folder is given, the exported UI on the same port.
+pub fn app_with_ui(st: AppState, ui_dir: Option<std::path::PathBuf>) -> Router {
+    let api = app(st);
+    match ui_dir {
+        Some(d) => ui::with_ui(api, d),
+        None => api,
+    }
 }

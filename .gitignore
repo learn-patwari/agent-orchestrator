@@ -14,3 +14,4 @@ desktop/dist/
 backend/build/
 backend/dist/
 rust/target/
+frontend/out/
