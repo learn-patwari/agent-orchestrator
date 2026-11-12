@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agent look: three concepts</title>
+<style>
+:root{--bg:#f6f7fb;--fg:#14161c;--mut:#576070;--line:#e0e4ed;--card:#fff;--acc:#4338ca}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,"Segoe UI",sans-serif;padding:20px}
+main{max-width:1000px;margin:auto}h1{margin:0 0 4px}p.sub{color:var(--mut);margin:0 0 14px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.tabs button{font:inherit;font-weight:600;padding:8px 16px;border-radius:999px;border:1px solid var(--line);background:#fff;cursor:pointer;color:var(--fg)}
+.tabs button[aria-selected="true"]{background:var(--acc);border-color:var(--acc);color:#fff}
+.panel{display:none}.panel.on{display:block}
+.note{color:var(--mut);font-size:.9rem;margin:10px 2px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.85rem;color:var(--mut);margin:6px 2px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle}
+/* concept A: robot crew */
+.crew{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px}
+.bot{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:14px 10px 12px;text-align:center;box-shadow:0 6px 18px rgba(30,30,60,.07);position:relative;overflow:hidden}
+.bot svg{width:120px;height:130px;overflow:visible}
+.bot h3{margin:4px 0 0;font-size:1rem}.bot small{color:var(--mut);display:block;min-height:1.4em}
+.pill{display:inline-block;margin-top:6px;padding:2px 10px;border-radius:999px;font-size:.78rem;font-weight:700;color:#fff}
+.idle .rb{animation:float 3.6s ease-in-out infinite}
+.running .rb{animation:float 1.6s ease-in-out infinite}.running .ball{animation:pulse .8s ease-in-out infinite}
+.running .arm{animation:type .35s ease-in-out infinite alternate}.running .arm.r{animation-delay:.17s}
+.failed .rb{animation:shake .5s linear infinite}.failed .smoke{opacity:1}
+.done .rb{animation:hop 1.1s ease-in-out infinite}.done .spark{opacity:1}
+.smoke,.spark{opacity:0}.smoke circle{animation:rise 1.4s ease-out infinite}.spark{animation:twinkle .9s steps(2) infinite}
+.eye{transform-box:fill-box;transform-origin:center;animation:blink 4.5s infinite}
+@keyframes float{50%{transform:translateY(-4px)}}@keyframes hop{50%{transform:translateY(-9px)}}
+@keyframes shake{25%{transform:translateX(-2px) rotate(-1deg)}75%{transform:translateX(2px) rotate(1deg)}}
+@keyframes pulse{50%{transform:scale(1.5);opacity:.6}}.ball{transform-box:fill-box;transform-origin:center}
+@keyframes type{to{transform:translateY(4px)}}@keyframes rise{from{transform:translateY(0);opacity:.8}to{transform:translateY(-16px);opacity:0}}
+@keyframes twinkle{50%{opacity:.2}}@keyframes blink{0%,94%,100%{transform:scaleY(1)}97%{transform:scaleY(.1)}}
+.mail{position:absolute;font-size:22px;transition:left 1.4s ease-in-out,top 1.4s ease-in-out;pointer-events:none;z-index:3}
+/* shared svg stage */
+.stage{width:100%;height:auto;background:#fff;border:1px solid var(--line);border-radius:22px;display:block}
+.bar{margin:0 0 10px}.bar button{font:inherit;font-weight:600;padding:7px 14px;border-radius:8px;border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style></head><body><main>
+<h1>Agent look: three concepts</h1>
+<p class="sub">Same data in each (roles, states, hand-offs). Pick the feeling you want; the app would drive them from real events.</p>
+<div class="tabs" role="tablist">
+  <button role="tab" aria-selected="true" data-t="a">A. Robot crew</button>
+  <button role="tab" aria-selected="false" data-t="b">B. Mission map</button>
+  <button role="tab" aria-selected="false" data-t="c">C. Delivery line</button>
+</div>
+<div class="legend"><span><i style="background:#9aa3b2"></i>idle</span><span><i style="background:#2f9e44"></i>running</span><span><i style="background:#3b5bdb"></i>done</span><span><i style="background:#e03131"></i>failed</span></div>
+
+<section id="a" class="panel on">
+  <div class="bar"><button id="mailBtn">Send a hand-off</button></div>
+  <div class="crew" id="crew" style="position:relative"></div>
+  <p class="note">A. Every role is its own little robot character with a personality. Cards are easy to read on a phone, work with keyboard and screen readers (they are real elements), and the hand-off is a flying envelope between cards. Best if you want friendly and approachable.</p>
+</section>
+
+<section id="b" class="panel">
+  <svg id="map" class="stage" viewBox="0 0 800 460" role="img" aria-label="Mission map of agents"></svg>
+  <p class="note">B. The Orchestrator sits at the centre like mission control; the team orbits it. Glowing beams show who is talking to whom, packets travel along them on a real hand-off, and rings pulse while an agent works. Best if you want it to feel like a live system and show the "only voice to the human" idea.</p>
+</section>
+
+<section id="c" class="panel">
+  <svg id="line" class="stage" viewBox="0 0 800 380" role="img" aria-label="Delivery line: a task moving through stations"></svg>
+  <p class="note">C. A delivery line that mirrors your real pipeline: a task crate rides the belt from architect to dev, test, review, QC and production, stopping at each station while it is worked on and changing colour as it passes. Best if you care most about seeing where each piece of work is right now.</p>
+</section>
+</main>
+<script>
+const COL={idle:'#9aa3b2',running:'#2f9e44',done:'#3b5bdb',failed:'#e03131'};
+const TEAM=[
+ {id:'orchestrator',n:'Orchestrator',e:'🧭',st:'running',task:'Planning lanes',c:'#4c6ef5',k:0},
+ {id:'architect',n:'Architect',e:'📐',st:'done',task:'SRS approved',c:'#f59f00',k:1},
+ {id:'developer_1',n:'Developer 1',e:'💻',st:'running',task:'login-form',c:'#2f9e44',k:2},
+ {id:'developer_2',n:'Developer 2',e:'⌨️',st:'failed',task:'2 tests red',c:'#12b886',k:3},
+ {id:'tester',n:'Tester',e:'🧪',st:'running',task:'area: auth',c:'#ae3ec9',k:4},
+ {id:'cicd',n:'CI/CD',e:'🚀',st:'idle',task:'',c:'#1098ad',k:5},
+ {id:'technical_writer',n:'Tech writer',e:'📝',st:'done',task:'README',c:'#7048e8',k:6},
+ {id:'incident_reporter',n:'Incident rep',e:'🚨',st:'idle',task:'',c:'#e8590c',k:7},
+ {id:'production_support',n:'Prod support',e:'🛟',st:'idle',task:'',c:'#5c7cfa',k:8}];
+const $=s=>document.querySelector(s),NS='http://www.w3.org/2000/svg';
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected',x===b));document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('on',p.id===b.dataset.t))});
+
+/* ---------- A: robot crew ---------- */
+function robot(a){
+  const c=a.c,k=a.k%4;
+  const head=['<rect x="30" y="18" width="60" height="46" rx="16"','<rect x="28" y="20" width="64" height="42" rx="24"','<rect x="32" y="16" width="56" height="50" rx="10"','<ellipse cx="60" cy="42" rx="32" ry="26"'][k];
+  const eyes=[`<g class="eye"><circle cx="48" cy="42" r="7" fill="#fff"/><circle cx="72" cy="42" r="7" fill="#fff"/><circle cx="49" cy="43" r="3.4" fill="#222"/><circle cx="73" cy="43" r="3.4" fill="#222"/></g>`,
+   `<g class="eye"><rect x="38" y="35" width="44" height="14" rx="7" fill="#1b2433"/><rect x="42" y="39" width="14" height="5" rx="2.5" fill="#6ee7b7"/><rect x="64" y="39" width="14" height="5" rx="2.5" fill="#6ee7b7"/></g>`,
+   `<g class="eye"><circle cx="60" cy="42" r="11" fill="#fff"/><circle cx="61" cy="43" r="5.4" fill="#222"/><circle cx="63" cy="41" r="1.6" fill="#fff"/></g>`,
+   `<g class="eye"><rect x="42" y="36" width="12" height="14" rx="6" fill="#fff"/><rect x="66" y="36" width="12" height="14" rx="6" fill="#fff"/><circle cx="48" cy="44" r="3.4" fill="#222"/><circle cx="72" cy="44" r="3.4" fill="#222"/></g>`][k];
+  const happy=a.st==='done'?`<path d="M42 40q6-8 12 0M66 40q6-8 12 0" stroke="#222" stroke-width="3" fill="none" stroke-linecap="round"/>`:'';
+  const mouth=a.st==='failed'?`<path d="M50 58q10-8 20 0" stroke="#222" stroke-width="3" fill="none" stroke-linecap="round"/>`:a.st==='done'?`<path d="M48 54q12 12 24 0" stroke="#222" stroke-width="3" fill="#fff" stroke-linejoin="round"/>`:`<path d="M52 56q8 6 16 0" stroke="#222" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+  const ant=[`<line x1="60" y1="18" x2="60" y2="6" stroke="#3b3150" stroke-width="3"/><circle class="ball" cx="60" cy="5" r="5" fill="${COL[a.st]}" stroke="#3b3150" stroke-width="2"/>`,
+   `<line x1="46" y1="20" x2="40" y2="8" stroke="#3b3150" stroke-width="3"/><line x1="74" y1="20" x2="80" y2="8" stroke="#3b3150" stroke-width="3"/><circle class="ball" cx="40" cy="7" r="4" fill="${COL[a.st]}" stroke="#3b3150" stroke-width="2"/><circle cx="80" cy="7" r="4" fill="#fff" stroke="#3b3150" stroke-width="2"/>`,
+   `<rect x="52" y="8" width="16" height="10" rx="4" fill="${c}" stroke="#3b3150" stroke-width="2.5"/><circle class="ball" cx="60" cy="13" r="2.6" fill="${COL[a.st]}"/>`,
+   `<path d="M60 18q-14-16 8-14" stroke="#3b3150" stroke-width="3" fill="none"/><circle class="ball" cx="68" cy="4" r="4.5" fill="${COL[a.st]}" stroke="#3b3150" stroke-width="2"/>`][k];
+  return `<svg viewBox="0 0 120 130" aria-hidden="true"><ellipse cx="60" cy="124" rx="30" ry="5" fill="rgba(60,40,80,.15)"/><g class="rb">
+   <g class="arm l"><rect x="14" y="76" width="14" height="30" rx="7" fill="${c}" stroke="#3b3150" stroke-width="2.5"/></g>
+   <g class="arm r"><rect x="92" y="76" width="14" height="30" rx="7" fill="${c}" stroke="#3b3150" stroke-width="2.5"/></g>
+   <rect x="32" y="68" width="56" height="44" rx="16" fill="${c}" stroke="#3b3150" stroke-width="2.5"/><rect x="46" y="80" width="28" height="18" rx="6" fill="#fff" opacity=".85"/><circle cx="60" cy="89" r="5" fill="${COL[a.st]}"/>
+   <rect x="38" y="108" width="14" height="12" rx="5" fill="#3b3150"/><rect x="68" y="108" width="14" height="12" rx="5" fill="#3b3150"/>
+   ${ant}${head} fill="#f4f6fb" stroke="#3b3150" stroke-width="2.5"/>${eyes}${happy}${mouth}
+   <g class="smoke"><circle cx="80" cy="12" r="5" fill="#9aa3b2"/><circle cx="88" cy="4" r="4" fill="#bcc3d0" style="animation-delay:.5s"/></g>
+   <g class="spark" fill="#f59f00"><path d="M96 20l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/><path d="M20 28l1.5 3.5 3.5 1.5-3.5 1.5L20 38l-1.5-3.5L15 33l3.5-1.5z"/></g></g></svg>`;
+}
+const crew=$('#crew');
+TEAM.forEach(a=>{const d=document.createElement('div');d.className='bot '+a.st;d.id='bot-'+a.id;
+ d.innerHTML=robot(a)+`<h3>${a.n}</h3><small>${a.task||'&nbsp;'}</small><span class="pill" style="background:${COL[a.st]}">${a.st}</span>`;crew.appendChild(d)});
+const mail=document.createElement('div');mail.className='mail';mail.textContent='✉️';mail.style.opacity=0;crew.appendChild(mail);
+const trips=[['architect','developer_1'],['developer_1','tester'],['tester','orchestrator'],['orchestrator','cicd'],['developer_2','architect']];let ti=0;
+function sendMail(){const [f,t]=trips[ti++%trips.length],A=$('#bot-'+f),B=$('#bot-'+t);if(!A||!B)return;
+ mail.style.transition='none';mail.style.opacity=1;mail.style.left=A.offsetLeft+A.offsetWidth/2-12+'px';mail.style.top=A.offsetTop+20+'px';
+ requestAnimationFrame(()=>requestAnimationFrame(()=>{mail.style.transition='left 1.4s ease-in-out,top 1.4s ease-in-out';mail.style.left=B.offsetLeft+B.offsetWidth/2-12+'px';mail.style.top=B.offsetTop+20+'px'}));
+ B.animate([{transform:'scale(1)'},{transform:'scale(1.05)'},{transform:'scale(1)'}],{duration:500,delay:1400});setTimeout(()=>mail.style.opacity=0,1900)}
+$('#mailBtn').onclick=sendMail;setInterval(sendMail,5000);setTimeout(sendMail,900);
+
+/* ---------- B: mission map ---------- */
+const map=$('#map'),P={};
+const el=(t,at,p,tx)=>{const e=document.createElementNS(NS,t);for(const k in at)e.setAttribute(k,at[k]);if(tx)e.textContent=tx;(p||map).appendChild(e);return e};
+{const defs=el('defs',{});const f=el('filter',{id:'glow',x:'-50%',y:'-50%',width:'200%',height:'200%'},defs);el('feGaussianBlur',{stdDeviation:'4',result:'b'},f);const m=el('feMerge',{},f);el('feMergeNode',{in:'b'},m);el('feMergeNode',{in:'SourceGraphic'},m);
+ const g=el('radialGradient',{id:'bgm',cx:'50%',cy:'50%',r:'60%'},defs);el('stop',{offset:'0','stop-color':'#eef0ff'},g);el('stop',{offset:'1','stop-color':'#fff'},g);
+ el('rect',{width:800,height:460,fill:'url(#bgm)'});
+ [90,150,210].forEach((r,i)=>el('ellipse',{cx:400,cy:230,rx:r*1.5,ry:r,fill:'none',stroke:'#d9dcf2','stroke-dasharray':'3 7'}));}
+const others=TEAM.slice(1),cx=400,cy=230;
+others.forEach((a,i)=>{const ang=-Math.PI/2+i*(2*Math.PI/others.length);P[a.id]=[cx+Math.cos(ang)*290,cy+Math.sin(ang)*160]});P.orchestrator=[cx,cy];
+others.forEach(a=>{const [x,y]=P[a.id];const l=el('line',{x1:cx,y1:cy,x2:x,y2:y,stroke:COL[a.st],'stroke-width':a.st==='idle'?1.2:2.4,opacity:a.st==='idle'?.35:.8});
+ if(a.st!=='idle'){l.setAttribute('stroke-dasharray','6 8');l.animate([{strokeDashoffset:28},{strokeDashoffset:0}],{duration:1200,iterations:Infinity})}});
+TEAM.forEach(a=>{const [x,y]=P[a.id],big=a.id==='orchestrator',r=big?46:30,g=el('g',{transform:`translate(${x},${y})`,style:'cursor:pointer'});
+ if(a.st==='running'){const p=el('circle',{r:r+6,fill:'none',stroke:COL.running,'stroke-width':3,opacity:.5},g);p.animate([{r:r+2,opacity:.7},{r:r+18,opacity:0}],{duration:1500,iterations:Infinity})}
+ el('circle',{r:r+4,fill:'#fff',stroke:COL[a.st],'stroke-width':4,filter:a.st==='idle'?'':'url(#glow)'},g);
+ el('circle',{r,fill:a.c,opacity:.16},g);el('text',{'text-anchor':'middle','dominant-baseline':'central','font-size':big?34:22},g,a.e);
+ const lw=Math.max(a.n.length*7+16,66);el('rect',{x:-lw/2,y:r+8,width:lw,height:20,rx:10,fill:'#fff',stroke:'#e0e4ed'},g);el('text',{y:r+18.5,'text-anchor':'middle','dominant-baseline':'central','font-size':11.5,'font-weight':700,fill:'#2b2f3a'},g,a.n);
+ if(a.task)el('text',{y:r+40,'text-anchor':'middle','font-size':10.5,fill:'#576070'},g,a.task);
+ el('circle',{cx:r*.72,cy:-r*.72,r:6,fill:COL[a.st],stroke:'#fff','stroke-width':2},g)});
+function packet(from,to,label){const [x1,y1]=P[from],[x2,y2]=P[to],g=el('g',{});el('circle',{r:9,fill:'#f59f00',stroke:'#fff','stroke-width':2,filter:'url(#glow)'},g);el('text',{y:-14,'text-anchor':'middle','font-size':11,'font-weight':700,fill:'#7a4b00'},g,label);
+ const a=g.animate([{transform:`translate(${x1}px,${y1}px)`},{transform:`translate(${x2}px,${y2}px)`}],{duration:1600,easing:'ease-in-out',fill:'forwards'});a.onfinish=()=>setTimeout(()=>g.remove(),200)}
+const mt=[['orchestrator','architect','Brief'],['architect','orchestrator','SRS'],['orchestrator','developer_1','Build login'],['developer_1','orchestrator','PR ready'],['orchestrator','tester','Test it']];let mi=0;
+const mapSend=()=>{const [f,t,l]=mt[mi++%mt.length];packet(f,t,l)};setInterval(mapSend,2200);setTimeout(mapSend,500);
+
+/* ---------- C: delivery line ---------- */
+const ln=$('#line'),ST=[{n:'Architect',e:'📐',x:90,col:'#f59f00'},{n:'Developer',e:'💻',x:240,col:'#2f9e44'},{n:'Tester',e:'🧪',x:390,col:'#ae3ec9'},{n:'Reviewer',e:'🔍',x:540,col:'#1098ad'},{n:'QC',e:'✅',x:690,col:'#3b5bdb'}];
+const L=(t,at,p,tx)=>{const e=document.createElementNS(NS,t);for(const k in at)e.setAttribute(k,at[k]);if(tx)e.textContent=tx;(p||ln).appendChild(e);return e};
+L('rect',{width:800,height:380,fill:'#f4f6ff'});L('rect',{x:20,y:236,width:760,height:28,rx:14,fill:'#3d4466'});
+for(let i=0;i<38;i++)L('rect',{x:30+i*20,y:244,width:10,height:12,rx:3,fill:'#565e86',class:'tick'});
+L('text',{x:30,y:300,'font-size':12,fill:'#576070'},0,'Work moves left to right. Each station lights up while it is working on the crate.');
+const stg=ST.map((s,i)=>{const g=L('g',{transform:`translate(${s.x},0)`});L('rect',{x:-52,y:70,width:104,height:150,rx:18,fill:'#fff',stroke:'#3b3150','stroke-width':2.5},g);
+ L('rect',{x:-52,y:70,width:104,height:30,rx:14,fill:s.col,opacity:.95},g);L('text',{y:86,'text-anchor':'middle','dominant-baseline':'central','font-size':13,'font-weight':700,fill:'#fff'},g,s.n);
+ L('text',{y:152,'text-anchor':'middle','dominant-baseline':'central','font-size':44},g,s.e);
+ const lamp=L('circle',{cx:38,cy:112,r:6,fill:'#cfd4dc',stroke:'#3b3150','stroke-width':1.5},g);const arm=L('rect',{x:-8,y:196,width:16,height:12,rx:4,fill:s.col},g);return {s,lamp,arm,g}});
+const crate=L('g',{});const cb=L('rect',{x:-22,y:-30,width:44,height:34,rx:6,fill:'#e0a96d',stroke:'#3b3150','stroke-width':2.5},crate);L('rect',{x:-22,y:-20,width:44,height:6,fill:'#c68642'},crate);L('text',{y:-6,'text-anchor':'middle','dominant-baseline':'central','font-size':11,'font-weight':700,fill:'#3b3150'},crate,'login');
+const lab=L('text',{y:-40,'text-anchor':'middle','font-size':11,'font-weight':700,fill:'#3b3150'},crate,'');
+const stateCol=['#e0a96d','#9fe0a8','#e3b8f2','#a5e3ee','#a9b9ff'],stateTxt=['draft','built','tested','reviewed','QC passed'];
+let t0=performance.now(),x=40,idx=-1,wait=0,lit=-1;
+const GO=1.7;function loop(now){const dt=Math.min(.05,(now-t0)/1000);t0=now;
+ if(wait>0){wait-=dt;if(wait<=0){lit=-1}}else{x+=dt*95;const next=ST.findIndex((s,i)=>i>idx&&x>=s.x);if(next>-1){idx=next;x=ST[next].x;wait=GO;lit=next;cb.setAttribute('fill',stateCol[next]);lab.textContent=stateTxt[next]}if(x>760){x=-30;idx=-1;cb.setAttribute('fill',stateCol[0]);lab.textContent='draft'}}
+ crate.setAttribute('transform',`translate(${x},236)`);
+ stg.forEach((o,i)=>{const on=lit===i;o.lamp.setAttribute('fill',on?'#51cf66':'#cfd4dc');o.arm.setAttribute('y',on?196+Math.sin(now/90)*6:200);o.g.setAttribute('transform',`translate(${o.s.x},${on?-3:0})`)});
+ document.querySelectorAll('.tick').forEach((r,i)=>r.setAttribute('x',30+((i*20+(x>0&&wait<=0?now/12:0))%760)));
+ requestAnimationFrame(loop)}requestAnimationFrame(loop);
+</script></body></html>

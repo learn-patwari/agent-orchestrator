@@ -38,15 +38,15 @@ const CFG = {
 // role id from the backend -> desk and look
 const SEATS = [
     { id: "orchestrator", label: "orchestrator", desk: [36, 34], shirt: "#364fc7", hair: "#222", acc: "tie" },
-    { id: "architect", label: "architect", desk: [110, 28], shirt: "#f59f00", hair: "#6b3f1d", acc: "glasses" },
+    { id: "architect", label: "architect", desk: [110, 28], shirt: "#f59f00", hair: "#6b3f1d", acc: "none" },
     { id: "developer_1", label: "developer 1", desk: [152, 28], shirt: "#2f9e44", hair: "#3b2412", acc: "phones" },
     { id: "developer_2", label: "developer 2", desk: [194, 28], shirt: "#12b886", hair: "#1b1b1b", acc: "phones" },
     { id: "cicd", label: "ci/cd", desk: [236, 28], shirt: "#1098ad", hair: "#7a4b21", acc: "cap" },
-    { id: "tester", label: "tester", desk: [168, 86], shirt: "#ae3ec9", hair: "#d9a441", acc: "bigglasses" },
+    { id: "tester", label: "tester", desk: [168, 86], shirt: "#ae3ec9", hair: "#d9a441", acc: "none" },
     { id: "incident_reporter", label: "incident rep", desk: [14, 132], shirt: "#e8590c", hair: "#222", acc: "hardhat" },
     { id: "production_support", label: "prod support", desk: [58, 132], shirt: "#5c7cfa", hair: "#a0522d", acc: "headset" },
     { id: "technical_writer", label: "tech writer", desk: [278, 28], shirt: "#7048e8", hair: "#4a2c17", acc: "pencil" },
-    { id: "receptionist", label: "receptionist", desk: [262, 146], shirt: "#e64980", hair: "#5c3317", acc: "bun", dummy: true },
+    { id: "receptionist", label: "receptionist", desk: [262, 146], shirt: "#e64980", hair: "#5c3317", acc: "none", dummy: true },
 ];
 const SKIN = ["#f1c7a0", "#e0a97c", "#c68642", "#8d5524"];
 const CAT_SPOTS = [[70, 76], [200, 62], [120, 114], [30, 164], [160, 150], [304, 112], [130, 130], [240, 62], [190, 150], [60, 76]];
@@ -145,14 +145,14 @@ export class OfficeScene {
             const home = [s.desk[0] + 12, s.desk[1] + 8];
             const p = {
                 id: s.id, label: s.label, desk: s.desk, home, front: [s.desk[0] + 12, s.desk[1] + 24], shirt: s.shirt, hair: s.hair,
-                skin: SKIN[i % 4], state: "idle", task: s.dummy ? "waiting" : null, dummy: !!s.dummy, carry: null, acc: s.acc, phase: i * 1.7, capColor: "#1098ad",
+                skin: SKIN[i % 4], state: "idle", task: s.dummy ? "waiting" : null, dummy: !!s.dummy, carry: null, acc: s.acc, phase: i * 1.7, capColor: "#1098ad", look: i % 4,
                 x: home[0], y: home[1], path: [], moving: false, res: null, speed: 0, say: "", sayT: 0,
             };
             this.people.push(p);
             this.byId[s.id] = p;
         });
         this.boy = { id: "office boy", label: "office boy", desk: [0, 0], home: [214, 160], front: [214, 160], shirt: "#868e96", hair: "#222",
-            skin: SKIN[1], state: "idle", task: null, dummy: true, carry: null, acc: "cap", phase: 0.5, capColor: "#e03131",
+            skin: SKIN[1], state: "idle", task: null, dummy: true, carry: null, acc: "cap", phase: 0.5, capColor: "#e03131", look: 2,
             x: 214, y: 160, path: [], moving: false, res: null, speed: 95, say: "", sayT: 0 };
         this.cat = { x: 160, y: 150, path: [], moving: false, res: null, speed: 34, say: "", sayT: 0, sleep: false };
         cv.addEventListener("click", this.click);
@@ -515,7 +515,7 @@ export class OfficeScene {
         }
         // arms behind the body
         const swing = walk ? Math.sin(ph) * 2 : 0;
-        const hand = (hx, hy) => this.ball(hx, hy, 1.35, 1.35, p.skin, 0.7);
+        const hand = (hx, hy) => this.ball(hx, hy, 1.5, 1.5, "#e6eaf2", 0.7);
         c.lineWidth = 2.6;
         c.strokeStyle = OUT;
         c.beginPath();
@@ -546,141 +546,142 @@ export class OfficeScene {
         // body
         this.box(x - 4.4, y - 10.4 - bob, 8.8, 8, 3, p.shirt, 0.9);
         this.box(x - 3, y - 9 - bob, 2.4, 3.4, 1.2, "rgba(255,255,255,.2)", 0);
-        if (p.acc === "tie") {
-            c.fillStyle = "#e03131";
-            c.beginPath();
-            c.moveTo(x - 1, y - 10 - bob);
-            c.lineTo(x + 1, y - 10 - bob);
-            c.lineTo(x + 0.8, y - 5 - bob);
-            c.lineTo(x, y - 4 - bob);
-            c.lineTo(x - 0.8, y - 5 - bob);
-            c.fill();
-        }
+        this.box(x - 2.8, y - 9 - bob, 5.6, 4.4, 1.4, "#f4f6fb", 0.6);
+        if (p.id === "orchestrator")
+            this.text("★", x, y - 6.6 - bob, 4.2, "#f2a900", "center");
+        else
+            this.ball(x, y - 6.8 - bob, 1.2, 1.2, STATUS_COLORS[p.state], 0.4);
         if (p.carry)
             this.paper(x + 6.4, y - 8 - bob);
         this.drawHead(p, x, y - 16.6 - bob, t, seated);
     }
     drawHead(p, x, y, t, seated) {
-        const c = this.ctx, st = seated ? p.state : "idle";
-        this.ball(x - 5.4, y + 0.8, 1.2, 1.5, p.skin, 0.7);
-        this.ball(x + 5.4, y + 0.8, 1.2, 1.5, p.skin, 0.7);
-        this.ball(x, y, 5.9, 5.6, p.skin, 1);
-        // hair cap with a fringe
-        c.beginPath();
-        c.arc(x, y - 0.2, 6, Math.PI * 1.02, Math.PI * 1.98);
-        c.quadraticCurveTo(x + 3.4, y - 3.4, x + 0.6, y - 2.4);
-        c.quadraticCurveTo(x - 2.6, y - 3.4, x - 5.9, y - 0.4);
-        c.closePath();
-        c.fillStyle = p.hair;
-        c.fill();
-        c.lineWidth = 0.9;
+        const c = this.ctx, st = seated ? p.state : "idle", k = p.look, sc = STATUS_COLORS[st];
+        // antenna (its light shows the agent's state)
+        const pulse = st === "running" ? 1 + Math.sin(t * 8 + p.phase) * 0.28 : 1;
+        c.lineWidth = 1.1;
         c.strokeStyle = OUT;
-        c.stroke();
-        if (p.acc === "bun") {
-            this.ball(x + 0.5, y - 7.6, 2.4, 2.2, p.hair, 0.9);
-            this.box(x - 1.6, y - 6.2, 4.2, 1.2, 0.6, "#ff6b9d", 0.5);
+        if (k === 1) {
+            c.beginPath();
+            c.moveTo(x - 3, y - 5);
+            c.lineTo(x - 5, y - 10);
+            c.moveTo(x + 3, y - 5);
+            c.lineTo(x + 5, y - 10);
+            c.stroke();
+            this.ball(x - 5, y - 10.4, 1.6 * pulse, 1.6 * pulse, sc, 0.8);
+            this.ball(x + 5, y - 10.4, 1.4, 1.4, "#fff", 0.8);
         }
-        // face
-        const blink = (t * 0.9 + p.phase) % 4 < 0.13, ex = st === "running" ? 0.5 : 0, ey = y + 0.9;
+        else if (k === 2) {
+            this.box(x - 2.6, y - 8.8, 5.2, 4, 1.6, p.shirt, 0.9);
+            this.ball(x, y - 6.8, 1.1 * pulse, 1.1 * pulse, sc, 0);
+        }
+        else {
+            c.beginPath();
+            c.moveTo(x, y - 5);
+            c.lineTo(x, y - 9.4);
+            c.stroke();
+            this.ball(x, y - 10, 2 * pulse, 2 * pulse, sc, 0.9);
+        }
+        // ear nubs and head
+        this.box(x - 7.4, y - 1.6, 2.2, 4, 1, p.shirt, 0.8);
+        this.box(x + 5.2, y - 1.6, 2.2, 4, 1, p.shirt, 0.8);
+        if (k === 0)
+            this.box(x - 6.2, y - 5.2, 12.4, 10.6, 3.8, "#f4f6fb", 1);
+        else if (k === 1)
+            this.box(x - 6.4, y - 4.8, 12.8, 9.8, 4.8, "#f4f6fb", 1);
+        else if (k === 2)
+            this.box(x - 5.8, y - 5.4, 11.6, 10.8, 2.6, "#f4f6fb", 1);
+        else
+            this.ball(x, y, 6.6, 5.4, "#f4f6fb", 1);
+        this.box(x - 4.6, y - 4.2, 3, 1.4, 0.7, "rgba(255,255,255,.9)", 0);
+        // dark visor with glowing face
+        this.box(x - 4.9, y - 2.8, 9.8, 6, 2.6, "#1f2a3d", 0.8);
+        const blink = (t * 0.9 + p.phase) % 4 < 0.13, ex = st === "running" ? 0.7 : 0, glow = st === "failed" ? "#ff8787" : "#6ee7b7";
+        c.lineWidth = 0.9;
+        c.strokeStyle = glow;
+        c.fillStyle = glow;
         for (const dx of [-2.2, 2.2]) {
-            if (blink) {
-                c.lineWidth = 0.8;
-                c.strokeStyle = OUT;
+            if (st === "failed") {
                 c.beginPath();
-                c.moveTo(x + dx - 1, ey);
-                c.lineTo(x + dx + 1, ey);
+                c.moveTo(x + dx - 0.9, y - 1.8);
+                c.lineTo(x + dx + 0.9, y - 0.2);
+                c.moveTo(x + dx + 0.9, y - 1.8);
+                c.lineTo(x + dx - 0.9, y - 0.2);
                 c.stroke();
             }
             else if (st === "done") {
-                c.lineWidth = 0.9;
-                c.strokeStyle = OUT;
                 c.beginPath();
-                c.arc(x + dx, ey + 0.5, 1.1, Math.PI * 1.1, Math.PI * 1.9);
+                c.arc(x + dx, y - 0.4, 1, Math.PI * 1.1, Math.PI * 1.9);
                 c.stroke();
+            }
+            else if (blink) {
+                c.beginPath();
+                c.moveTo(x + dx - 0.9, y - 1);
+                c.lineTo(x + dx + 0.9, y - 1);
+                c.stroke();
+            }
+            else if (k === 2) {
+                c.beginPath();
+                c.arc(x + dx * 0.5 + ex, y - 1, 1.2, 0, 6.283);
+                c.fill();
             }
             else {
-                this.ball(x + dx, ey, 1, 1.35, "#fff", 0.5);
-                this.ball(x + dx + ex, ey + 0.1, 0.62, 0.95, "#222", 0);
-                this.ball(x + dx + ex + 0.25, ey - 0.35, 0.22, 0.22, "#fff", 0);
+                c.beginPath();
+                c.roundRect(x + dx - 0.9 + ex, y - 2, 1.8, 2.2, 0.9);
+                c.fill();
             }
         }
-        this.ball(x - 3.7, y + 2.7, 1.2, 0.8, "rgba(255,105,135,.4)", 0);
-        this.ball(x + 3.7, y + 2.7, 1.2, 0.8, "rgba(255,105,135,.4)", 0);
-        c.lineWidth = 0.8;
-        c.strokeStyle = OUT;
         c.beginPath();
-        if (st === "failed") {
-            c.arc(x, y + 4.4, 1.5, Math.PI * 1.15, Math.PI * 1.85);
-            c.stroke();
-            c.beginPath();
-            c.moveTo(x - 3.4, y - 1);
-            c.lineTo(x - 1.2, y - 1.9);
-            c.moveTo(x + 3.4, y - 1);
-            c.lineTo(x + 1.2, y - 1.9);
-            c.stroke();
-            this.ball(x + 5.6, y - 3.6 + ((t * 2) % 1.5), 0.8, 1.2, "#74c0fc", 0.4);
-        }
+        if (st === "failed")
+            c.arc(x, y + 3.2, 1.1, Math.PI * 1.15, Math.PI * 1.85);
         else if (st === "running") {
-            c.moveTo(x - 1.1, y + 3.4);
-            c.lineTo(x + 1.1, y + 3.4);
-            c.stroke();
+            c.moveTo(x - 1, y + 1.7);
+            c.lineTo(x + 1, y + 1.7);
         }
-        else {
-            c.arc(x, y + 2.6, 1.7, 0.15 * Math.PI, 0.85 * Math.PI);
-            c.stroke();
+        else
+            c.arc(x, y + 0.9, 1.5, 0.15 * Math.PI, 0.85 * Math.PI);
+        c.stroke();
+        if (st === "failed") {
+            this.ball(x + 6.2, y - 4 + ((t * 2) % 1.5), 0.8, 1.2, "#74c0fc", 0.4);
         }
         // accessories
-        if (p.acc === "glasses" || p.acc === "bigglasses") {
-            const r = p.acc === "bigglasses" ? 2 : 1.7;
-            c.lineWidth = 0.7;
-            c.strokeStyle = p.acc === "bigglasses" ? "#c92a2a" : "#2b2f3a";
-            for (const dx of [-2.2, 2.2]) {
-                c.beginPath();
-                c.arc(x + dx, ey, r, 0, 6.283);
-                c.stroke();
-            }
-            c.beginPath();
-            c.moveTo(x - 0.5, ey);
-            c.lineTo(x + 0.5, ey);
-            c.stroke();
-        }
         if (p.acc === "phones" || p.acc === "headset") {
             c.lineWidth = 1;
             c.strokeStyle = "#343a40";
             c.beginPath();
-            c.arc(x, y - 0.4, 6.4, Math.PI * 1.02, Math.PI * 1.98);
+            c.arc(x, y - 0.4, 7, Math.PI * 1.02, Math.PI * 1.98);
             c.stroke();
-            this.box(x - 7.6, y - 1.4, 2.6, 4.4, 1.2, p.acc === "phones" ? "#ff6b6b" : "#4c6ef5", 0.7);
-            this.box(x + 5, y - 1.4, 2.6, 4.4, 1.2, p.acc === "phones" ? "#ff6b6b" : "#4c6ef5", 0.7);
+            const hc = p.acc === "phones" ? "#ff6b6b" : "#4c6ef5";
+            this.box(x - 8.8, y - 1.6, 2.6, 4.6, 1.2, hc, 0.7);
+            this.box(x + 6.2, y - 1.6, 2.6, 4.6, 1.2, hc, 0.7);
             if (p.acc === "headset") {
                 c.lineWidth = 0.8;
                 c.beginPath();
-                c.moveTo(x - 6.2, y + 2.8);
-                c.quadraticCurveTo(x - 5, y + 6, x - 2, y + 5);
+                c.moveTo(x - 7.6, y + 3);
+                c.quadraticCurveTo(x - 6, y + 6.4, x - 2.6, y + 5.4);
                 c.stroke();
-                this.ball(x - 2, y + 5, 0.9, 0.9, "#343a40", 0);
+                this.ball(x - 2.6, y + 5.4, 0.9, 0.9, "#343a40", 0);
             }
         }
         if (p.acc === "cap" || p.acc === "hardhat") {
             const col = p.acc === "hardhat" ? "#ffa94d" : p.capColor;
             c.beginPath();
-            c.arc(x, y - 0.8, 6.3, Math.PI, 0);
+            c.arc(x, y - 3.4, 6.2, Math.PI, 0);
             c.closePath();
             c.fillStyle = col;
             c.fill();
             c.lineWidth = 0.9;
             c.strokeStyle = OUT;
             c.stroke();
-            this.box(x - 1, y - 7.5, 2, 1.8, 0.8, shade(col, -0.2), 0.5);
             if (p.acc === "cap")
-                this.box(x + 1, y - 1.7, 7, 1.7, 0.9, shade(col, -0.15), 0.8);
+                this.box(x + 1, y - 4, 7, 1.7, 0.9, shade(col, -0.15), 0.8);
             else
-                this.box(x - 7, y - 1.8, 14, 1.7, 0.8, shade(col, -0.1), 0.8);
+                this.box(x - 7, y - 4.2, 14, 1.7, 0.8, shade(col, -0.1), 0.8);
         }
         if (p.acc === "pencil") {
             c.save();
-            c.translate(x + 5.6, y - 1.2);
-            c.rotate(0.6);
+            c.translate(x + 7.4, y - 2.4);
+            c.rotate(0.5);
             this.box(-0.6, -3.4, 1.3, 5.6, 0.5, "#ffd43b", 0.5);
             this.box(-0.6, -3.9, 1.3, 1, 0.4, "#ff8787", 0.4);
             c.restore();
