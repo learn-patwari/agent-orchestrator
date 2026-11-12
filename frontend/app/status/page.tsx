@@ -81,20 +81,21 @@ export default function Status() {
   const sel = rows?.find((r) => r.role === selected);
   return (
     <>
-      <PageHead title="Agents" sub="Each role, what it does, which model it uses and what it is doing now. Refreshes every 4 seconds." />
-      <div className="row">
-        <button onClick={runCheck} disabled={checking || !rows?.length}>
-          {checking ? "Checking…" : "Check Agents"}
-        </button>
-        <button onClick={() => setView(view === "office" ? "table" : "office")} aria-pressed={view === "table"}>
-          {view === "office" ? "Show table" : "Show office"}
-        </button>
+      <PageHead title="Agents" sub="Your team at work. Click anyone for details." />
+      <div className="toolbar">
+        <div className="seg" role="group" aria-label="View">
+          <button className="secondary" aria-pressed={view === "office"} onClick={() => setView("office")}>Office</button>
+          <button className="secondary" aria-pressed={view === "table"} onClick={() => setView("table")}>Table</button>
+        </div>
         {view === "office" && (
-          <button onClick={() => setPaused(!paused)} aria-pressed={paused}>
+          <button className="secondary" onClick={() => setPaused(!paused)} aria-pressed={paused}>
             {paused ? "Play" : "Pause"}
           </button>
         )}
-        <span className="muted">Check Agents asks each model once whether it answers. It uses a little of your quota, so it only runs when you click.</span>
+        <span className="spacer" />
+        <button onClick={runCheck} disabled={checking || !rows?.length} title="Asks each model once whether it answers. Uses a little quota, so it only runs when you click.">
+          {checking ? "Checking…" : "Check agents"}
+        </button>
       </div>
       {checking && <p className="muted" role="status">Checking each model. This can take up to a minute…</p>}
       {checks && !checking && (
@@ -158,9 +159,7 @@ export default function Status() {
               </button>
             ))}
           </div>
-          <p className="muted" style={{ marginTop: 8 }}>
-            Everyone stays at their desk. The office boy walks only when the app records a real hand-off: a delegation, a review, a deploy or a run reporting back. The QC and PROD racks light up with a version only when something is deployed there. The receptionist and the cat are just for fun.
-          </p>
+          <p className="muted caption">The office boy only walks when the app records a real hand-off. The receptionist and the cat are just for fun.</p>
           <div className="card" aria-live="polite">
             {sel ? (
               <>
