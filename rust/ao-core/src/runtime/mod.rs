@@ -7,7 +7,7 @@ pub mod tools;
 use serde_json::Value;
 
 /// Python's `str(value)` for the few YAML scalar types a frontmatter can hold.
-pub(crate) fn py_str(v: &Value) -> String {
+pub fn py_str(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
         Value::Null => "None".to_string(),

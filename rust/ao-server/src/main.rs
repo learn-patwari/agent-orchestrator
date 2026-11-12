@@ -11,8 +11,10 @@ async fn main() {
             std::process::exit(1);
         }
     };
+    let state = AppState::default();
+    ao_server::background::start(state.clone(), std::time::Duration::from_secs(30));
     println!("ao-backend {} listening on http://127.0.0.1:{port}", env!("CARGO_PKG_VERSION"));
-    if let Err(e) = axum::serve(listener, app(AppState::default())).await {
+    if let Err(e) = axum::serve(listener, app(state)).await {
         eprintln!("ao-backend: {e}");
         std::process::exit(1);
     }

@@ -3,6 +3,7 @@ mod core;
 mod extras;
 mod flow;
 mod runs;
+mod team;
 
 use crate::{ApiError, Routes};
 use ao_core::runtime::skills::SkillRegistry;
@@ -10,7 +11,7 @@ use serde_json::Value;
 use std::path::PathBuf;
 
 pub fn all() -> Routes {
-    flow::mount(runs::mount(extras::mount(core::mount(Routes::new()))))
+    team::mount(flow::mount(runs::mount(extras::mount(core::mount(Routes::new())))))
 }
 
 pub(crate) fn settings() -> Result<Value, ApiError> {

@@ -67,7 +67,15 @@ pub fn ok_json(status: u16, body: Value) -> HttpResponse {
 
 impl Client {
     pub async fn call(&self, method: &str, path: &str, body: Option<Value>) -> (u16, Value) {
+        self.call_with(method, path, body, &[]).await
+    }
+
+    /// Like `call`, with extra request headers.
+    pub async fn call_with(&self, method: &str, path: &str, body: Option<Value>, headers: &[(&str, &str)]) -> (u16, Value) {
         let mut b = Request::builder().method(method).uri(path);
+        for (k, v) in headers {
+            b = b.header(*k, *v);
+        }
         if let Some(c) = self.cookie.lock().unwrap().as_ref() {
             b = b.header(header::COOKIE, format!("ao_session={c}"));
         }

@@ -3,6 +3,7 @@
 //! Handlers are plain synchronous functions `fn(&AppState, &Req) -> R`. The framework below mounts each one on axum,
 //! checks the session (cookie or bearer token) for guarded routes, parses the JSON body, runs the handler on a blocking
 //! thread (the core is synchronous) and turns the result into `{"detail": ...}` errors like FastAPI did.
+pub mod background;
 pub mod routes;
 pub mod runs;
 
