@@ -1,6 +1,7 @@
 //! The route groups. Each module mounts its routes on `Routes`; `all()` puts them together.
 mod core;
 mod extras;
+mod flow;
 mod runs;
 
 use crate::{ApiError, Routes};
@@ -9,7 +10,7 @@ use serde_json::Value;
 use std::path::PathBuf;
 
 pub fn all() -> Routes {
-    runs::mount(extras::mount(core::mount(Routes::new())))
+    flow::mount(runs::mount(extras::mount(core::mount(Routes::new()))))
 }
 
 pub(crate) fn settings() -> Result<Value, ApiError> {

@@ -111,7 +111,7 @@ fn mcp_test(st: &AppState, r: &Req) -> R {
     }
 }
 
-fn berr(e: BudgetError) -> ApiError {
+pub(crate) fn berr(e: BudgetError) -> ApiError {
     match e {
         BudgetError::Msg(m) => ApiError::new(400, m),
         BudgetError::Db(d) => d.into(),

@@ -21,8 +21,13 @@ use std::sync::Arc;
 /// Builds a provider from a stored record. Tests replace it; the app uses `ao_core::providers::build_with`.
 pub type ProviderFactory = Arc<dyn Fn(&Value) -> Result<Box<dyn Provider>, BuildError> + Send + Sync>;
 
+/// Runs a `gh` command line and returns its output.
+pub type GhRunnerFn = Arc<dyn Fn(&[String]) -> Result<String, String> + Send + Sync>;
+
 #[derive(Clone, Default)]
 pub struct AppState {
+    /// Replaces the `gh` command line (tests inject one; None runs the real `gh`).
+    pub gh_runner: Option<GhRunnerFn>,
     /// The HTTP transport providers use (tests inject one; None means the real network).
     pub http: Option<Transport>,
     pub provider_factory: Option<ProviderFactory>,
