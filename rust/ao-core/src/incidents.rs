@@ -133,3 +133,62 @@ impl Incidents {
         Ok(repo()?.update(iid, json!({"status": "resolved", "resolved_at": now()}))?.unwrap_or(Value::Null))
     }
 }
+
+/// The `incident` tool bound to the acting role: the reporter reports; production support escalates, hands fixes on and
+/// resolves.
+pub struct IncidentTool {
+    actor: String,
+}
+
+fn row(i: &Value) -> Value {
+    let mut o = serde_json::Map::new();
+    for k in ["id", "title", "severity", "level", "status", "task_id", "fix_owner"] {
+        o.insert(k.into(), i.get(k).cloned().unwrap_or(Value::Null));
+    }
+    Value::Object(o)
+}
+
+impl IncidentTool {
+    pub fn new(actor: &str) -> Self {
+        IncidentTool { actor: actor.into() }
+    }
+
+    pub fn into_hook(self) -> crate::runtime::tools::Hook {
+        Box::new(move |args: &Value| self.call(args))
+    }
+
+    fn need(&self, role: &str) -> std::result::Result<(), crate::runtime::tools::ToolError> {
+        if self.actor != role {
+            return Err(crate::runtime::tools::ToolError(format!("only the {role} role can do this step")));
+        }
+        Ok(())
+    }
+
+    pub fn call(&self, args: &Value) -> std::result::Result<String, crate::runtime::tools::ToolError> {
+        use crate::runtime::tools::ToolError;
+        let s = |k: &str| args.get(k).and_then(|v| v.as_str()).unwrap_or("");
+        let opt = |k: &str| args.get(k).and_then(|v| v.as_str()).filter(|v| !v.is_empty());
+        let action = s("action");
+        let inc = Incidents;
+        let fail = |e: IncidentError| ToolError(e.to_string());
+        let dump = |v: Value| crate::providers::base::py_dumps(&v);
+        match action {
+            "list" => Ok(dump(Value::Array(inc.list(false).map_err(fail)?.iter().map(row).collect()))),
+            "report" => {
+                self.need("incident_reporter")?;
+                Ok(dump(row(&inc.report(s("title"), s("severity"), s("evidence"), "prod", opt("task_id")).map_err(fail)?)))
+            }
+            "escalate" | "hand_to_developer" | "resolve" => {
+                self.need("production_support")?;
+                let Some(id) = opt("incident_id") else { return Err(ToolError("incident_id is required".into())) };
+                let r = match action {
+                    "escalate" => inc.escalate(id, s("reason")),
+                    "resolve" => inc.resolve(id),
+                    _ => inc.hand_to_developer(id),
+                };
+                Ok(dump(row(&r.map_err(fail)?)))
+            }
+            _ => Err(ToolError(format!("unknown incident action {action}; use list, report, escalate, hand_to_developer or resolve"))),
+        }
+    }
+}

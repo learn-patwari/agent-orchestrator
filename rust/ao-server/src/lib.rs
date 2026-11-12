@@ -4,6 +4,7 @@
 //! checks the session (cookie or bearer token) for guarded routes, parses the JSON body, runs the handler on a blocking
 //! thread (the core is synchronous) and turns the result into `{"detail": ...}` errors like FastAPI did.
 pub mod routes;
+pub mod runs;
 
 use ao_core::providers::base::{Provider, Transport};
 use ao_core::providers::BuildError;
@@ -65,6 +66,15 @@ impl Req {
 pub struct ApiError {
     pub status: u16,
     pub detail: Value,
+}
+
+impl std::fmt::Display for ApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.detail {
+            Value::String(s) => f.write_str(s),
+            other => write!(f, "{other}"),
+        }
+    }
 }
 
 impl ApiError {
