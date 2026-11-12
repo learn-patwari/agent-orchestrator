@@ -5,6 +5,11 @@
 export type TeamRow = { role: string; description?: string; model?: string | null; state: string; task: string | null; steps: number };
 export type Deployed = { task_id: string; name: string; version: string; at: number };
 export type Environments = { qc: Deployed | null; prod: Deployed | null };
+export type CharStyle = "robots" | "people" | "animals" | "heroes" | "stars_in" | "stars_world";
+export const CHAR_STYLES: { id: CharStyle; label: string }[] = [
+  { id: "robots", label: "Robots" }, { id: "people", label: "People" }, { id: "animals", label: "Animals" }, { id: "heroes", label: "Heroes" },
+  { id: "stars_in", label: "Stars (Indian-inspired)" }, { id: "stars_world", label: "Stars (world-inspired)" },
+];
 export type Handoff = { id: string; from: string; to: string; label: string; at: number };
 
 type Pt = [number, number];
@@ -50,16 +55,34 @@ const CFG: Record<string, { lane: number; via: Pt; in: Pt; out: string }> = {
 // role id from the backend -> desk and look
 const SEATS: { id: string; label: string; desk: Pt; shirt: string; hair: string; acc: string; dummy?: boolean }[] = [
   { id: "orchestrator", label: "orchestrator", desk: [36, 34], shirt: "#364fc7", hair: "#222", acc: "tie" },
-  { id: "architect", label: "architect", desk: [110, 28], shirt: "#f59f00", hair: "#6b3f1d", acc: "none" },
+  { id: "architect", label: "architect", desk: [110, 28], shirt: "#f59f00", hair: "#6b3f1d", acc: "glasses" },
   { id: "developer_1", label: "developer 1", desk: [152, 28], shirt: "#2f9e44", hair: "#3b2412", acc: "phones" },
   { id: "developer_2", label: "developer 2", desk: [194, 28], shirt: "#12b886", hair: "#1b1b1b", acc: "phones" },
   { id: "cicd", label: "ci/cd", desk: [236, 28], shirt: "#1098ad", hair: "#7a4b21", acc: "cap" },
-  { id: "tester", label: "tester", desk: [168, 86], shirt: "#ae3ec9", hair: "#d9a441", acc: "none" },
+  { id: "tester", label: "tester", desk: [168, 86], shirt: "#ae3ec9", hair: "#d9a441", acc: "bigglasses" },
   { id: "incident_reporter", label: "incident rep", desk: [14, 132], shirt: "#e8590c", hair: "#222", acc: "hardhat" },
   { id: "production_support", label: "prod support", desk: [58, 132], shirt: "#5c7cfa", hair: "#a0522d", acc: "headset" },
   { id: "technical_writer", label: "tech writer", desk: [278, 28], shirt: "#7048e8", hair: "#4a2c17", acc: "pencil" },
-  { id: "receptionist", label: "receptionist", desk: [262, 146], shirt: "#e64980", hair: "#5c3317", acc: "none", dummy: true },
+  { id: "receptionist", label: "receptionist", desk: [262, 146], shirt: "#e64980", hair: "#5c3317", acc: "bun", dummy: true },
 ];
+type Animal = { fur: string; muz: string; ear: "round" | "point" | "long" | "floppy" | "tuft" | "none"; inner: string; mark?: string; nose?: string };
+const ANIMALS: Record<string, Animal> = {
+  owl: { fur: "#a9794f", muz: "#f3e3c3", ear: "tuft", inner: "#8a5a35", mark: "owl" },
+  fox: { fur: "#f08a3c", muz: "#fff4e5", ear: "point", inner: "#3b3150", mark: "fox" },
+  panda: { fur: "#f7f7f7", muz: "#fff", ear: "round", inner: "#2b2f3a", mark: "panda" },
+  bunny: { fur: "#f6eef0", muz: "#fff", ear: "long", inner: "#ffb3c6", nose: "#ff7a9c" },
+  dog: { fur: "#c98c52", muz: "#f6dfc0", ear: "floppy", inner: "#8a5a2b" },
+  tiger: { fur: "#f6a21e", muz: "#fff3d6", ear: "round", inner: "#fff", mark: "tiger" },
+  bear: { fur: "#9b6a43", muz: "#d9b48a", ear: "round", inner: "#6e4a2e" },
+  mouse: { fur: "#b8bfcc", muz: "#e9edf5", ear: "round", inner: "#ffb3c6", nose: "#ff7a9c" },
+  frog: { fur: "#6fcf6f", muz: "#c8f2b5", ear: "none", inner: "#4fae4f", mark: "frog" },
+  koala: { fur: "#9aa3b2", muz: "#cfd4dc", ear: "round", inner: "#e9edf5", mark: "koala" },
+};
+const ANIMAL_OF: Record<string, string> = { orchestrator: "owl", architect: "fox", developer_1: "panda", developer_2: "bunny", cicd: "dog", tester: "tiger", incident_reporter: "bear", production_support: "mouse", technical_writer: "frog", receptionist: "koala", "office boy": "mouse" };
+const HERO_OF: Record<string, string> = { orchestrator: "wizard", architect: "knight", developer_1: "ninja", developer_2: "pirate", cicd: "astronaut", tester: "detective", incident_reporter: "firefighter", production_support: "superhero", technical_writer: "scholar", receptionist: "princess", "office boy": "courier" };
+// Fictional "star" archetypes (action star, cricket captain, singer...). No real person is drawn or named.
+const STAR_IN: Record<string, string> = { orchestrator: "director", architect: "shades", developer_1: "cricket", developer_2: "flowers", cicd: "singer", tester: "shades", incident_reporter: "cricket", production_support: "singer", technical_writer: "director", receptionist: "flowers", "office boy": "cricket" };
+const STAR_WORLD: Record<string, string> = { orchestrator: "tophat", architect: "aviator", developer_1: "rock", developer_2: "headband", cicd: "aviator", tester: "director", incident_reporter: "headband", production_support: "rock", technical_writer: "tophat", receptionist: "divaglasses", "office boy": "headband" };
 const SKIN = ["#f1c7a0", "#e0a97c", "#c68642", "#8d5524"];
 const CAT_SPOTS: Pt[] = [[70, 76], [200, 62], [120, 114], [30, 164], [160, 150], [304, 112], [130, 130], [240, 62], [190, 150], [60, 76]];
 
@@ -119,6 +142,7 @@ export class OfficeScene {
   private raf = 0;
   private last = 0;
   private clock = 0;
+  private style: CharStyle = "robots";
   private S = 3;
   private ro: ResizeObserver | null = null;
   private catTimer = 2;
@@ -164,6 +188,9 @@ export class OfficeScene {
       p.state = toStatus(r.state); p.task = r.task;
     }
   }
+
+  /** Characters are only a look: robots, people, animals or heroes (generic costumes). */
+  setStyle(style: CharStyle) { this.style = style; }
 
   /** What is deployed to QC and production. A rack lights up and shows its version only when the app says so. */
   setEnvironments(env: Environments) { this.env = env; }
@@ -362,7 +389,7 @@ export class OfficeScene {
     }
     // arms behind the body
     const swing = walk ? Math.sin(ph) * 2 : 0;
-    const hand = (hx: number, hy: number) => this.ball(hx, hy, 1.5, 1.5, "#e6eaf2", 0.7);
+    const hand = (hx: number, hy: number) => this.ball(hx, hy, 1.5, 1.5, this.style === "robots" ? "#e6eaf2" : this.style === "animals" ? ANIMALS[ANIMAL_OF[p.id] ?? "mouse"].fur : p.skin, 0.7);
     c.lineWidth = 2.6; c.strokeStyle = OUT; c.beginPath();
     if (seated) { c.moveTo(x - 4, y - 8 - bob); c.lineTo(x - 3 + (typing ? Math.sin(t * 22) * 0.8 : 0), y - 2.6); c.moveTo(x + 4, y - 8 - bob); c.lineTo(x + 3 + (typing ? Math.cos(t * 22) * 0.8 : 0), y - 2.6); }
     else { c.moveTo(x - 4, y - 8 - bob); c.lineTo(x - 5.3, y - 4.6 + swing - bob); c.moveTo(x + 4, y - 8 - bob); c.lineTo(x + 5.3, y - 4.6 - swing - bob); }
@@ -370,15 +397,19 @@ export class OfficeScene {
     c.lineWidth = 1.4; c.strokeStyle = p.shirt; c.stroke();
     if (seated) { hand(x - 3, y - 2.4); hand(x + 3, y - 2.4); } else { hand(x - 5.3, y - 4.2 + swing - bob); hand(x + 5.3, y - 4.2 - swing - bob); }
     // body
+    if (this.style === "heroes" && (HERO_OF[p.id] === "superhero" || HERO_OF[p.id] === "wizard")) { c.beginPath(); c.moveTo(x - 4, y - 9 - bob); c.lineTo(x + 4, y - 9 - bob); c.lineTo(x + 6.4 + Math.sin(t * 6) * (p.moving ? 1.4 : 0.3), y - 0.5); c.lineTo(x - 6.4, y - 0.5); c.closePath(); c.fillStyle = HERO_OF[p.id] === "superhero" ? "#e03131" : "#7048e8"; c.fill(); c.lineWidth = 0.9; c.strokeStyle = OUT; c.stroke(); }
     this.box(x - 4.4, y - 10.4 - bob, 8.8, 8, 3, p.shirt, 0.9);
     this.box(x - 3, y - 9 - bob, 2.4, 3.4, 1.2, "rgba(255,255,255,.2)", 0);
-    this.box(x - 2.8, y - 9 - bob, 5.6, 4.4, 1.4, "#f4f6fb", 0.6);
-    if (p.id === "orchestrator") this.text("★", x, y - 6.6 - bob, 4.2, "#f2a900", "center");
-    else this.ball(x, y - 6.8 - bob, 1.2, 1.2, STATUS_COLORS[p.state], 0.4);
+    if (this.style === "robots") {
+      this.box(x - 2.8, y - 9 - bob, 5.6, 4.4, 1.4, "#f4f6fb", 0.6);
+      if (p.id === "orchestrator") this.text("★", x, y - 6.6 - bob, 4.2, "#f2a900", "center");
+      else this.ball(x, y - 6.8 - bob, 1.2, 1.2, STATUS_COLORS[p.state], 0.4);
+    } else if (this.style === "animals") this.ball(x, y - 6.4 - bob, 2.6, 2.8, ANIMALS[ANIMAL_OF[p.id] ?? "mouse"].muz, 0);
+    else if (this.style === "people" && p.acc === "tie") { c.fillStyle = "#e03131"; c.beginPath(); c.moveTo(x - 1, y - 10 - bob); c.lineTo(x + 1, y - 10 - bob); c.lineTo(x + 0.8, y - 5 - bob); c.lineTo(x, y - 4 - bob); c.lineTo(x - 0.8, y - 5 - bob); c.fill(); }
     if (p.carry) this.paper(x + 6.4, y - 8 - bob);
     this.drawHead(p, x, y - 16.6 - bob, t, seated);
   }
-  private drawHead(p: Person, x: number, y: number, t: number, seated: boolean) {
+  private drawHeadRobot(p: Person, x: number, y: number, t: number, seated: boolean) {
     const c = this.ctx, st = seated ? p.state : "idle", k = p.look, sc = STATUS_COLORS[st];
     // antenna (its light shows the agent's state)
     const pulse = st === "running" ? 1 + Math.sin(t * 8 + p.phase) * 0.28 : 1;
@@ -423,6 +454,120 @@ export class OfficeScene {
       if (p.acc === "cap") this.box(x + 1, y - 4, 7, 1.7, 0.9, shade(col, -0.15), 0.8); else this.box(x - 7, y - 4.2, 14, 1.7, 0.8, shade(col, -0.1), 0.8);
     }
     if (p.acc === "pencil") { c.save(); c.translate(x + 7.4, y - 2.4); c.rotate(0.5); this.box(-0.6, -3.4, 1.3, 5.6, 0.5, "#ffd43b", 0.5); this.box(-0.6, -3.9, 1.3, 1, 0.4, "#ff8787", 0.4); c.restore(); }
+  }
+  /** Pick the head for the current character style. */
+  private drawHead(p: Person, x: number, y: number, t: number, seated: boolean) {
+    if (this.style === "animals") return this.drawHeadAnimal(p, x, y, t, seated);
+    if (this.style === "people") return this.drawHeadHuman(p, x, y, t, seated, true);
+    if (this.style === "heroes" || this.style === "stars_in" || this.style === "stars_world") { this.drawHeadHuman(p, x, y, t, seated, false); return this.drawCostume(p, x, y); }
+    return this.drawHeadRobot(p, x, y, t, seated);
+  }
+  /** Eyes, cheeks and mouth that follow the agent's state. Shared by people, animals and heroes. */
+  private face(p: Person, x: number, st: string, t: number, o: { dx: number; ey: number; my: number; mw?: number }) {
+    const c = this.ctx, blink = (t * 0.9 + p.phase) % 4 < 0.13, look = st === "running" ? 0.5 : 0;
+    for (const dx of [-o.dx, o.dx]) {
+      c.lineWidth = 0.8; c.strokeStyle = OUT;
+      if (blink) { c.beginPath(); c.moveTo(x + dx - 1, o.ey); c.lineTo(x + dx + 1, o.ey); c.stroke(); }
+      else if (st === "done") { c.beginPath(); c.arc(x + dx, o.ey + 0.5, 1.1, Math.PI * 1.1, Math.PI * 1.9); c.stroke(); }
+      else { this.ball(x + dx, o.ey, 1, 1.35, "#fff", 0.5); this.ball(x + dx + look, o.ey + 0.1, 0.62, 0.95, "#222", 0); this.ball(x + dx + look + 0.25, o.ey - 0.35, 0.22, 0.22, "#fff", 0); }
+    }
+    c.lineWidth = 0.8; c.strokeStyle = OUT; c.beginPath();
+    const mw = o.mw ?? 1.7;
+    if (st === "failed") {
+      c.arc(x, o.my + 1.6, mw * 0.9, Math.PI * 1.15, Math.PI * 1.85); c.stroke();
+      c.beginPath(); c.moveTo(x - o.dx - 1.2, o.ey - 1.6); c.lineTo(x - o.dx + 1, o.ey - 2.3); c.moveTo(x + o.dx + 1.2, o.ey - 1.6); c.lineTo(x + o.dx - 1, o.ey - 2.3); c.stroke();
+      this.ball(x + o.dx + 3.4, o.ey - 3 + ((t * 2) % 1.5), 0.8, 1.2, "#74c0fc", 0.4);
+    } else if (st === "running") { c.moveTo(x - 1.1, o.my); c.lineTo(x + 1.1, o.my); c.stroke(); }
+    else if (st === "done") { c.arc(x, o.my - 0.6, mw, 0.05 * Math.PI, 0.95 * Math.PI); c.closePath(); c.fillStyle = "#fff"; c.fill(); c.stroke(); }
+    else { c.arc(x, o.my - 0.6, mw, 0.15 * Math.PI, 0.85 * Math.PI); c.stroke(); }
+  }
+  private drawHeadHuman(p: Person, x: number, y: number, t: number, seated: boolean, acc: boolean) {
+    const c = this.ctx, st = seated ? p.state : "idle", ey = y + 0.9;
+    this.ball(x - 5.4, y + 0.8, 1.2, 1.5, p.skin, 0.7); this.ball(x + 5.4, y + 0.8, 1.2, 1.5, p.skin, 0.7);
+    this.ball(x, y, 5.9, 5.6, p.skin, 1);
+    c.beginPath(); c.arc(x, y - 0.2, 6, Math.PI * 1.02, Math.PI * 1.98);
+    c.quadraticCurveTo(x + 3.4, y - 3.4, x + 0.6, y - 2.4); c.quadraticCurveTo(x - 2.6, y - 3.4, x - 5.9, y - 0.4); c.closePath();
+    c.fillStyle = p.hair; c.fill(); c.lineWidth = 0.9; c.strokeStyle = OUT; c.stroke();
+    if (acc && p.acc === "bun") { this.ball(x + 0.5, y - 7.6, 2.4, 2.2, p.hair, 0.9); this.box(x - 1.6, y - 6.2, 4.2, 1.2, 0.6, "#ff6b9d", 0.5); }
+    this.face(p, x, st, t, { dx: 2.2, ey, my: y + 3.4 });
+    this.ball(x - 3.7, y + 2.7, 1.2, 0.8, "rgba(255,105,135,.4)", 0); this.ball(x + 3.7, y + 2.7, 1.2, 0.8, "rgba(255,105,135,.4)", 0);
+    if (!acc) return;
+    if (p.acc === "glasses" || p.acc === "bigglasses") {
+      const r = p.acc === "bigglasses" ? 2 : 1.7; c.lineWidth = 0.7; c.strokeStyle = p.acc === "bigglasses" ? "#c92a2a" : "#2b2f3a";
+      for (const dx of [-2.2, 2.2]) { c.beginPath(); c.arc(x + dx, ey, r, 0, 6.283); c.stroke(); }
+      c.beginPath(); c.moveTo(x - 0.5, ey); c.lineTo(x + 0.5, ey); c.stroke();
+    }
+    this.headGear(p, x, y);
+  }
+  /** Headphones, headset, cap, hard hat and pencil: shared by people and animals. */
+  private headGear(p: Person, x: number, y: number) {
+    const c = this.ctx;
+    if (p.acc === "phones" || p.acc === "headset") {
+      c.lineWidth = 1; c.strokeStyle = "#343a40"; c.beginPath(); c.arc(x, y - 0.4, 6.8, Math.PI * 1.02, Math.PI * 1.98); c.stroke();
+      const hc = p.acc === "phones" ? "#ff6b6b" : "#4c6ef5";
+      this.box(x - 8, y - 1.4, 2.6, 4.4, 1.2, hc, 0.7); this.box(x + 5.4, y - 1.4, 2.6, 4.4, 1.2, hc, 0.7);
+    }
+    if (p.acc === "cap" || p.acc === "hardhat") {
+      const col = p.acc === "hardhat" ? "#ffa94d" : p.capColor;
+      c.beginPath(); c.arc(x, y - 0.8, 6.3, Math.PI, 0); c.closePath(); c.fillStyle = col; c.fill(); c.lineWidth = 0.9; c.strokeStyle = OUT; c.stroke();
+      if (p.acc === "cap") this.box(x + 1, y - 1.7, 7, 1.7, 0.9, shade(col, -0.15), 0.8); else this.box(x - 7, y - 1.8, 14, 1.7, 0.8, shade(col, -0.1), 0.8);
+    }
+    if (p.acc === "pencil") { c.save(); c.translate(x + 5.6, y - 1.2); c.rotate(0.6); this.box(-0.6, -3.4, 1.3, 5.6, 0.5, "#ffd43b", 0.5); this.box(-0.6, -3.9, 1.3, 1, 0.4, "#ff8787", 0.4); c.restore(); }
+  }
+  private drawHeadAnimal(p: Person, x: number, y: number, t: number, seated: boolean) {
+    const c = this.ctx, st = seated ? p.state : "idle", A = ANIMALS[ANIMAL_OF[p.id] ?? "mouse"], ey = y - 0.6;
+    const tri = (pts: number[][], fill: string) => { c.beginPath(); c.moveTo(pts[0][0], pts[0][1]); pts.slice(1).forEach((q) => c.lineTo(q[0], q[1])); c.closePath(); c.fillStyle = fill; c.fill(); c.lineWidth = 0.9; c.strokeStyle = OUT; c.stroke(); };
+    for (const s of [-1, 1]) {
+      if (A.ear === "round") { this.ball(x + s * 4.8, y - 4.2, 2.6, 2.6, A.fur, 0.9); this.ball(x + s * 4.8, y - 4.2, 1.4, 1.4, A.inner, 0); }
+      else if (A.ear === "point") { tri([[x + s * 5.8, y - 1], [x + s * 4.6, y - 8.6], [x + s * 1.2, y - 4.4]], A.fur); tri([[x + s * 4.8, y - 3], [x + s * 4.4, y - 6.6], [x + s * 2.6, y - 4.6]], A.inner); }
+      else if (A.ear === "long") { this.ball(x + s * 2.8, y - 8.6, 1.9, 5, A.fur, 0.9, s * 0.12); this.ball(x + s * 2.8, y - 8.4, 0.9, 3.6, A.inner, 0, s * 0.12); }
+      else if (A.ear === "floppy") this.ball(x + s * 6.2, y + 0.4, 2, 3.8, A.inner, 0.9, s * 0.2);
+      else if (A.ear === "tuft") tri([[x + s * 5.6, y - 2], [x + s * 4.8, y - 7.6], [x + s * 1.6, y - 4.6]], A.fur);
+    }
+    if (A.mark === "frog") { for (const s of [-1, 1]) this.ball(x + s * 3.6, y - 4.4, 2.6, 2.5, A.fur, 0.9); }
+    this.ball(x, y, 6.5, 5.6, A.fur, 1);
+    if (A.mark === "panda") for (const s of [-1, 1]) this.ball(x + s * 2.6, ey, 1.9, 2.3, "#2b2f3a", 0, s * 0.4);
+    if (A.mark === "tiger") { c.lineWidth = 0.9; c.strokeStyle = "#7a3b00"; c.beginPath(); c.moveTo(x, y - 5.4); c.lineTo(x, y - 3.4); c.moveTo(x - 2.4, y - 5); c.lineTo(x - 2, y - 3.4); c.moveTo(x + 2.4, y - 5); c.lineTo(x + 2, y - 3.4); c.moveTo(x - 6.2, y + 1); c.lineTo(x - 4.6, y + 1.4); c.moveTo(x + 6.2, y + 1); c.lineTo(x + 4.6, y + 1.4); c.stroke(); }
+    if (A.mark === "fox") for (const s of [-1, 1]) this.ball(x + s * 3.4, y + 2.4, 3, 2.2, A.muz, 0);
+    if (A.mark === "owl") { for (const s of [-1, 1]) this.ball(x + s * 2.7, y - 0.4, 2.9, 2.9, "#fff", 0.8); tri([[x - 1.2, y + 1.2], [x + 1.2, y + 1.2], [x, y + 3]], "#ffa94d"); }
+    if (A.mark === "frog") { this.face(p, x, st, t, { dx: 3.6, ey: y - 4.4, my: y + 3, mw: 3 }); }
+    else if (A.mark === "owl") { this.face(p, x, st, t, { dx: 2.7, ey: y - 0.4, my: y + 5.6, mw: 0.01 }); }
+    else {
+      this.ball(x, y + 2.6, 3.2, 2.3, A.muz, 0.6);
+      this.ball(x, y + 1.7, A.mark === "koala" ? 1.7 : 0.95, A.mark === "koala" ? 1.3 : 0.7, A.nose ?? "#3b3150", 0);
+      this.face(p, x, st, t, { dx: 2.5, ey, my: y + 4.2, mw: 1.2 });
+    }
+    if (p.acc === "phones" || p.acc === "headset" || p.acc === "cap" || p.acc === "hardhat") this.headGear(p, x, y);
+  }
+  /** Generic costume pieces (no real people or brands): wizard, knight, ninja, pirate and so on. */
+  private drawCostume(p: Person, x: number, y: number) {
+    const c = this.ctx, k = (this.style === "stars_in" ? STAR_IN[p.id] : this.style === "stars_world" ? STAR_WORLD[p.id] : HERO_OF[p.id]) ?? "courier";
+    const poly = (pts: number[][], fill: string) => { c.beginPath(); c.moveTo(pts[0][0], pts[0][1]); pts.slice(1).forEach((q) => c.lineTo(q[0], q[1])); c.closePath(); c.fillStyle = fill; c.fill(); c.lineWidth = 0.9; c.strokeStyle = OUT; c.stroke(); };
+    if (k === "wizard") { this.ball(x, y - 4, 8, 1.8, "#6741d9", 0.9); poly([[x - 5, y - 4.2], [x + 5, y - 4.2], [x + 1.5, y - 15], [x - 1, y - 14]], "#7950f2"); this.text("★", x + 0.4, y - 8.4, 3.4, "#ffd43b", "center"); }
+    else if (k === "knight") { c.beginPath(); c.arc(x, y - 0.6, 6.6, Math.PI, 0); c.closePath(); c.fillStyle = "#ced4da"; c.fill(); c.lineWidth = 0.9; c.strokeStyle = OUT; c.stroke(); this.box(x - 5.2, y - 2.6, 10.4, 2.6, 1, "#adb5bd", 0.8); this.ball(x, y - 8, 1.2, 3.2, "#e03131", 0.7); }
+    else if (k === "ninja") { this.box(x - 6.2, y - 3.2, 12.4, 2.8, 1.2, "#2b2f3a", 0.8); this.box(x - 5.6, y + 1.6, 11.2, 4.4, 2.4, "#2b2f3a", 0.8); poly([[x + 6, y - 2.4], [x + 11, y - 4], [x + 9.4, y - 0.8]], "#e03131"); }
+    else if (k === "pirate") { c.beginPath(); c.arc(x, y - 0.8, 6.4, Math.PI, 0); c.closePath(); c.fillStyle = "#e03131"; c.fill(); c.lineWidth = 0.9; c.strokeStyle = OUT; c.stroke(); poly([[x + 5.6, y - 3], [x + 10, y - 1], [x + 6, y + 0.6]], "#e03131"); this.ball(x - 2.2, y + 0.9, 1.7, 1.5, "#222", 0.5); }
+    else if (k === "astronaut") { this.ball(x, y, 8, 7.6, "rgba(170,215,255,.28)", 1.4, 0, "#f4f6fb"); this.box(x - 6, y + 5.6, 12, 2.4, 1.2, "#f4f6fb", 0.8); }
+    else if (k === "detective") { this.ball(x, y - 3.6, 8.4, 1.8, "#8a5a2b", 0.9); this.box(x - 4.6, y - 9.2, 9.2, 6, 2.4, "#9b6a43", 0.9); this.box(x - 4.6, y - 5.4, 9.2, 1.4, 0.4, "#3b3150", 0.4); }
+    else if (k === "firefighter") { c.beginPath(); c.arc(x, y - 0.8, 6.4, Math.PI, 0); c.closePath(); c.fillStyle = "#e03131"; c.fill(); c.lineWidth = 0.9; c.strokeStyle = OUT; c.stroke(); this.box(x - 7.4, y - 2, 14.8, 1.8, 0.8, "#c92a2a", 0.8); this.ball(x, y - 4.6, 1.5, 1.5, "#ffd43b", 0.6); }
+    else if (k === "superhero") { poly([[x - 6.4, y - 1.4], [x - 3, y - 2.4], [x, y - 1.2], [x + 3, y - 2.4], [x + 6.4, y - 1.4], [x + 5.4, y + 1.8], [x + 2.2, y + 1.6], [x, y + 0.2], [x - 2.2, y + 1.6], [x - 5.4, y + 1.8]], "#1c7ed6"); for (const s of [-1, 1]) this.ball(x + s * 2.4, y + 0.1, 1, 0.8, "#fff", 0); }
+    else if (k === "scholar") { poly([[x, y - 8.4], [x + 8, y - 5.6], [x, y - 3.2], [x - 8, y - 5.6]], "#2b2f3a"); this.box(x - 4, y - 4.8, 8, 2.6, 1, "#343a40", 0.7); this.ball(x + 6.6, y - 0.6, 0.9, 0.9, "#ffd43b", 0); }
+    else if (k === "shades" || k === "aviator" || k === "divaglasses") {
+      const col = k === "aviator" ? "#c9a227" : k === "divaglasses" ? "#e64980" : "#1b1b1b";
+      for (const s of [-1, 1]) this.ball(x + s * 2.4, y + 0.7, 2.3, k === "aviator" ? 2.2 : 1.7, col, 0.8);
+      c.lineWidth = 0.8; c.strokeStyle = OUT; c.beginPath(); c.moveTo(x - 0.4, y + 0.5); c.lineTo(x + 0.4, y + 0.5); c.moveTo(x - 4.7, y + 0.4); c.lineTo(x - 6, y); c.moveTo(x + 4.7, y + 0.4); c.lineTo(x + 6, y); c.stroke();
+      this.ball(x - 3, y + 0.1, 0.6, 0.4, "rgba(255,255,255,.7)", 0);
+      if (k === "divaglasses") this.text("★", x + 4.6, y - 2.2, 3.2, "#ffd43b", "center");
+    }
+    else if (k === "cricket") { c.beginPath(); c.arc(x, y - 0.8, 6.4, Math.PI, 0); c.closePath(); c.fillStyle = "#1c64d4"; c.fill(); c.lineWidth = 0.9; c.strokeStyle = OUT; c.stroke(); this.box(x + 1, y - 1.7, 7.4, 1.8, 0.9, "#154aa0", 0.8); this.ball(x, y - 4.2, 1.1, 1.1, "#fff", 0); }
+    else if (k === "singer") { c.lineWidth = 1; c.strokeStyle = "#343a40"; c.beginPath(); c.arc(x, y - 0.4, 6.6, Math.PI * 1.02, Math.PI * 1.98); c.stroke(); this.box(x + 5.4, y - 1.2, 2.4, 4, 1.1, "#e64980", 0.7); c.lineWidth = 0.8; c.beginPath(); c.moveTo(x + 6.6, y + 2.8); c.quadraticCurveTo(x + 5.4, y + 6, x + 2.4, y + 5); c.stroke(); this.ball(x + 2.4, y + 5, 1, 1, "#343a40", 0); this.text("♪", x - 8, y - 6, 4.4, "#e64980", "center"); }
+    else if (k === "director") { this.ball(x - 0.6, y - 4.6, 7, 2.4, "#d6336c", 0.9); this.ball(x - 0.4, y - 6.4, 2.4, 1.2, "#d6336c", 0.7); this.box(x + 5.4, y - 10, 5, 3.4, 0.8, "#343a40", 0.7); this.box(x + 5.4, y - 10, 5, 1, 0.4, "#fff", 0.5); }
+    else if (k === "flowers") { [["#ff6b9d", -4.6], ["#ffd43b", -1.6], ["#ff922b", 1.6], ["#ff6b9d", 4.6]].forEach(([col, dx], i) => { this.ball(x + (dx as number), y - 4.6 + (i % 2 ? 0.6 : 0), 1.7, 1.7, col as string, 0.6); this.ball(x + (dx as number), y - 4.6 + (i % 2 ? 0.6 : 0), 0.6, 0.6, "#fff", 0); }); }
+    else if (k === "tophat") { this.ball(x, y - 4.6, 7.4, 1.6, "#2b2f3a", 0.9); this.box(x - 4.4, y - 11.8, 8.8, 7.4, 1.4, "#343a40", 0.9); this.box(x - 4.4, y - 7.2, 8.8, 1.8, 0.4, "#e03131", 0.5); }
+    else if (k === "headband") { this.box(x - 6.2, y - 3.2, 12.4, 2, 1, "#e03131", 0.8); poly([[x + 6, y - 2.4], [x + 9.4, y - 4], [x + 8.6, y - 0.6]], "#e03131"); }
+    else if (k === "rock") { this.box(x - 6.4, y - 3.4, 12.8, 2.4, 1, "#2b2f3a", 0.8); for (let i = -2; i <= 2; i++) poly([[x + i * 2.4 - 1.2, y - 3.4], [x + i * 2.4, y - 8.4 + Math.abs(i) * 0.8], [x + i * 2.4 + 1.2, y - 3.4]], "#e64980"); for (const s of [-1, 1]) this.ball(x + s * 2.4, y + 0.7, 2.2, 1.6, "#1b1b1b", 0.8); }
+    else if (k === "princess") { poly([[x - 4.6, y - 5.4], [x - 4.2, y - 9.4], [x - 2, y - 7], [x, y - 10.4], [x + 2, y - 7], [x + 4.2, y - 9.4], [x + 4.6, y - 5.4]], "#ffd43b"); this.ball(x, y - 7.2, 0.8, 0.8, "#fa5252", 0); }
+    else { c.beginPath(); c.arc(x, y - 0.8, 6.3, Math.PI, 0); c.closePath(); c.fillStyle = p.capColor; c.fill(); c.lineWidth = 0.9; c.strokeStyle = OUT; c.stroke(); this.box(x + 1, y - 1.7, 7, 1.7, 0.9, shade(p.capColor, -0.15), 0.8); }
   }
   private drawCat(t: number) {
     const k = this.cat, x = k.x, y = k.y, c = this.ctx, step = k.moving ? Math.sin(t * 14) : 0;

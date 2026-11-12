@@ -150,3 +150,5 @@ dl.detail dt{color:var(--muted)}dl.detail dd{margin:0}
 .seg button{border:0;border-radius:0;background:transparent;padding:7px 16px}
 .seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
 .caption{font-size:.85rem;margin:8px 2px 0}
+.look{display:inline-flex;align-items:center;gap:6px;margin:0;font-weight:500}
+.look select{width:auto;padding:6px 10px}

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import Office from "../../components/Office";
 import { Alert, Badge, Empty, PageHead } from "../../components/ui";
 import { api } from "../../lib/api";
-import { Environments, Handoff, STATUS_COLORS, seatLabel, toStatus } from "../../lib/office-scene";
+import { CHAR_STYLES, CharStyle, Environments, Handoff, STATUS_COLORS, seatLabel, toStatus } from "../../lib/office-scene";
 
 type Check = { role: string; responding: boolean; detail: string };
 type View = "office" | "table";
@@ -25,6 +25,18 @@ export default function Status() {
   const [view, setView] = useState<View>("office");
   const [paused, setPaused] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  const [look, setLook] = useState<CharStyle>("robots");
+
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("ao.office.look") as CharStyle | null;
+      if (v && CHAR_STYLES.some((c) => c.id === v)) setLook(v);
+    } catch {}
+  }, []);
+  function pickLook(v: CharStyle) {
+    setLook(v);
+    try { localStorage.setItem("ao.office.look", v); } catch {}
+  }
 
   useEffect(() => {
     if (window.innerWidth < 640) setView("table"); // the office needs room; phones get the table
@@ -92,6 +104,14 @@ export default function Status() {
             {paused ? "Play" : "Pause"}
           </button>
         )}
+        {view === "office" && (
+          <label className="look">
+            <span className="muted">Characters</span>
+            <select value={look} onChange={(e) => pickLook(e.target.value as CharStyle)}>
+              {CHAR_STYLES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+            </select>
+          </label>
+        )}
         <span className="spacer" />
         <button onClick={runCheck} disabled={checking || !rows?.length} title="Asks each model once whether it answers. Uses a little quota, so it only runs when you click.">
           {checking ? "Checking…" : "Check agents"}
@@ -149,7 +169,7 @@ export default function Status() {
 
       {rows && rows.length > 0 && view === "office" && (
         <>
-          <Office team={rows} handoffs={handoffs} environments={env} paused={paused} onSelect={setSelected} />
+          <Office team={rows} handoffs={handoffs} environments={env} paused={paused} look={look} onSelect={setSelected} />
           <div className="agent-chips" aria-label="Agent status">
             {rows.map((r) => (
               <button key={r.role} className="agent-chip" onClick={() => setSelected(r.role)} aria-pressed={selected === r.role}>

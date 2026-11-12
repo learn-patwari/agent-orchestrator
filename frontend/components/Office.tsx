@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef } from "react";
-import { Environments, Handoff, OfficeScene, TeamRow } from "../lib/office-scene";
+import { CharStyle, Environments, Handoff, OfficeScene, TeamRow } from "../lib/office-scene";
 
 /** The animated office. All state comes from the app (team rows and hand-offs); nothing here is scripted. */
 export default function Office({
@@ -8,12 +8,14 @@ export default function Office({
   handoffs,
   environments,
   paused,
+  look = "robots",
   onSelect,
 }: {
   team: TeamRow[];
   handoffs: Handoff[];
   environments: Environments;
   paused: boolean;
+  look?: CharStyle;
   onSelect: (role: string) => void;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -43,6 +45,9 @@ export default function Office({
     scene.current?.setEnvironments(environments);
   }, [environments]);
   useEffect(() => {
+    scene.current?.setStyle(look);
+  }, [look]);
+  useEffect(() => {
     if (scene.current) scene.current.paused = paused;
   }, [paused]);
 
@@ -51,7 +56,7 @@ export default function Office({
       ref={ref}
       className="office-canvas"
       role="img"
-      aria-label="Animated office. Each agent sits at a desk; the office boy carries work between them when the app reports a hand-off. Use the table view for the same information as text."
+      aria-label="Animated office. Each agent (shown as a robot, person, animal, hero or star, your choice) sits at a desk; the office boy carries work between them when the app reports a hand-off. Use the table view for the same information as text."
     />
   );
 }
