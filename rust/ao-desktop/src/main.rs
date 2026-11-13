@@ -4,6 +4,7 @@
 use ao_desktop::{bundled_dirs, data_dir, pick_port, start_backend, ui_dir, DEFAULT_PORT};
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use tauri::webview::NewWindowResponse;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 fn env(k: &str) -> Option<String> {
@@ -65,7 +66,29 @@ fn main() {
         .setup(|app| {
             let port = boot().map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
             let url: tauri::Url = format!("http://127.0.0.1:{port}/").parse()?;
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url)).title("Agent Orchestrator").inner_size(1280.0, 860.0).build()?;
+            let handle = app.handle().clone();
+            let opened = std::sync::atomic::AtomicUsize::new(0);
+            WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
+                .title("Agent Orchestrator")
+                .inner_size(1280.0, 860.0)
+                .maximized(true)
+                // the Agents page's Detach button: our own pages may open in their own window, anything else stays out
+                .on_new_window(move |url, features| {
+                    if !ao_desktop::is_detach_url(&url) {
+                        return NewWindowResponse::Deny;
+                    }
+                    let n = opened.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    match WebviewWindowBuilder::new(&handle, format!("detached-{n}"), WebviewUrl::External(url))
+                        .window_features(features)
+                        .title("Agents")
+                        .inner_size(1280.0, 820.0)
+                        .build()
+                    {
+                        Ok(window) => NewWindowResponse::Create { window },
+                        Err(_) => NewWindowResponse::Deny,
+                    }
+                })
+                .build()?;
             Ok(())
         })
         .run(tauri::generate_context!())

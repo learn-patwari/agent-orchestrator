@@ -5,6 +5,11 @@ use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+/// The Agents page's Detach button opens `/agents-window/` on our own local server; nothing else may open a window.
+pub fn is_detach_url(url: &tauri::Url) -> bool {
+    matches!(url.host_str(), Some("127.0.0.1" | "localhost")) && url.path().trim_end_matches('/') == "/agents-window"
+}
+
 /// The port baked into the previous (Electron) build, so bookmarks and the UI stay the same.
 pub const DEFAULT_PORT: u16 = 8765;
 
