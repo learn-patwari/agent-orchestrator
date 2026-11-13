@@ -6,7 +6,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-pub const READ: [&str; 4] = ["read_file", "list_dir", "git_read", "use_skill"];
+pub const READ: [&str; 5] = ["read_file", "list_dir", "git_read", "use_skill", "graph"];
 /// All of these need an approved SRS before they may run.
 pub const DEVELOPERS: [&str; 3] = ["developer", "developer_1", "developer_2"];
 

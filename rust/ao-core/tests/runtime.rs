@@ -44,7 +44,7 @@ fn parse_role_and_defaults() {
 #[test]
 fn unknown_role_names_get_the_read_only_tools() {
     let r = parse_role("---\nname: newcomer\ndescription: d\n---\nB", "").unwrap();
-    assert_eq!(r.tools, ["read_file", "list_dir", "git_read", "use_skill"]);
+    assert_eq!(r.tools, ["read_file", "list_dir", "git_read", "use_skill", "graph"]);
     let w = parse_role("---\nname: technical_writer\ndescription: d\n---\nB", "").unwrap();
     assert!(!w.tools.contains(&"run_shell".to_string()) && !w.tools.contains(&"pipeline".to_string()));
 }

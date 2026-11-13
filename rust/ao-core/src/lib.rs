@@ -4,6 +4,7 @@ pub mod auth;
 pub mod ba;
 pub mod budget;
 pub mod features;
+pub mod graph;
 pub mod plugins;
 pub mod profiles;
 pub mod settings;

@@ -292,6 +292,12 @@ fn specs() -> Vec<(&'static str, ToolSpec)> {
             json!({"action": string, "title": string, "severity": string, "evidence": string, "task_id": string, "incident_id": string, "reason": string}),
             &["action"])),
         ("use_skill", spec("use_skill", "Load the full instructions of a listed skill by name.", json!({"name": string}), &["name"])),
+        ("graph", spec("graph", concat!(
+            "Ask the code knowledge graph instead of reading whole files (much cheaper). Actions: find (query: a function, class or type name), ",
+            "outline (query: a file path; its symbols with line numbers, imports and who imports it; read the file only for the lines you need), ",
+            "imports / importers (query: a file path), impact (query: a file path; everything that could break if it changes), ",
+            "tests_for (query: a file path), stats. Try this before read_file."),
+            json!({"action": string, "query": string}), &["action"])),
     ]
 }
 
@@ -364,6 +370,7 @@ impl ToolBox {
                 Some(h) => h(args),
                 None => err("incidents are not available in this run"),
             },
+            "graph" => self.graph(&s(args, name, "action")?, args.get("query").and_then(|q| q.as_str()).unwrap_or("")),
             "use_skill" => {
                 let n = s(args, name, "name")?;
                 match self.skills.as_ref().and_then(|k| k.load_body(&n)) {
@@ -373,6 +380,30 @@ impl ToolBox {
             }
             _ => err(format!("unknown tool {name}")),
         }
+    }
+
+    /// The graph of the configured repository (the workspace itself when none is set). File-level answers are read from
+    /// this workspace, so an agent sees its own uncommitted edits.
+    fn graph(&self, action: &str, query: &str) -> R {
+        let root = self.ws.root_real();
+        if action == "outline" && self.ws.denied(query) {
+            return err(format!("{query} is on the never-stage/secret list"));
+        }
+        let repo = crate::settings::get_settings()
+            .ok()
+            .and_then(|s| s["repo_path"].as_str().map(PathBuf::from))
+            .filter(|p| !p.as_os_str().is_empty() && p.is_dir())
+            .unwrap_or_else(|| root.clone());
+        let g = crate::graph::ensure(&repo, false);
+        let out = crate::graph::answer(&g, &root, action, query).map_err(ToolError)?;
+        let saved = if action == "outline" {
+            let file = std::fs::metadata(root.join(query.trim())).map(|m| m.len()).unwrap_or(0);
+            file.saturating_sub(out.len() as u64) / 4
+        } else {
+            0
+        };
+        crate::graph::record(saved);
+        Ok(out)
     }
 
     fn read_file(&self, path: &str) -> R {
