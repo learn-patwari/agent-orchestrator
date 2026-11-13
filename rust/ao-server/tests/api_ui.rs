@@ -29,3 +29,17 @@ async fn pages_assets_and_the_api_share_one_port() {
     assert_eq!(get(&r, "/..%2f..%2fCargo.toml").await.0, 404); // no escaping the UI folder
     assert_eq!(get(&r, "/../Cargo.toml").await.0, 404);
 }
+
+/// Next 16 exports a page's data at `chat/__next.chat/__PAGE__.txt` but the browser asks for `chat/__next.chat.__PAGE__.txt`.
+#[tokio::test]
+async fn next_page_data_requests_find_the_nested_export_file() {
+    let _e = common::env();
+    let ui = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(ui.path().join("chat/__next.chat")).unwrap();
+    std::fs::write(ui.path().join("chat/__next.chat/__PAGE__.txt"), "page-data").unwrap();
+    std::fs::write(ui.path().join("chat/__next._tree.txt"), "tree").unwrap();
+    let r = ao_server::app_with_ui(ao_server::AppState::default(), Some(ui.path().to_path_buf()));
+    assert_eq!(get(&r, "/chat/__next.chat.__PAGE__.txt").await, (200, "page-data".into()));
+    assert_eq!(get(&r, "/chat/__next._tree.txt").await, (200, "tree".into())); // already correct, untouched
+    assert_eq!(get(&r, "/chat/__next.nope.__PAGE__.txt").await.0, 404);
+}
