@@ -37,10 +37,12 @@ async fn the_graph_needs_a_repository_then_builds_and_reports() {
 }
 
 #[tokio::test]
-async fn a_repository_that_is_not_a_folder_is_a_clear_error() {
+async fn a_saved_folder_that_was_deleted_later_is_a_clear_error() {
     let e = env();
     let c = e.c.authed().await;
-    c.put("/api/settings", json!({"repo_path": "C:/definitely/not/here"})).await;
+    let r = repo();
+    assert_eq!(c.put("/api/settings", json!({"repo_path": r.path().to_string_lossy()})).await.0, 200);
+    drop(r); // the folder goes away after it was saved
     let r = c.post("/api/graph/build", json!({})).await;
     assert_eq!(r.0, 400);
     assert!(r.1["detail"].as_str().unwrap().contains("not a folder"), "{:?}", r.1);

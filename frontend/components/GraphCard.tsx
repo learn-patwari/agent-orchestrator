@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { Alert } from "./ui";
@@ -50,7 +51,7 @@ export default function GraphCard() {
     <section className="card" aria-labelledby="kg-h">
       <h2 id="kg-h">Knowledge graph</h2>
       <p className="muted">
-        A map of your repository: files, functions, classes and which file imports which. Agents ask it (find, outline, impact, tests for) instead of reading whole files, which is where most tokens go. It is built by scanning the folder in Settings; no model is used and nothing leaves your computer. Rebuild it after big changes.
+        A map of your repository: files, functions, classes and which file imports which. Agents ask it (find, outline, impact, tests for) instead of reading whole files, which is where most tokens go. It is built by scanning the development folder (Settings); no model is used and nothing leaves your computer. Rebuild it after big changes.
       </p>
       {err && <Alert>{err}</Alert>}
       {g && (
@@ -62,7 +63,13 @@ export default function GraphCard() {
                 {g.by_language ? ` (${Object.entries(g.by_language).map(([k, v]) => `${v} ${k}`).join(", ")})` : ""}. Built {g.built_at ? new Date(g.built_at * 1000).toLocaleString() : ""}.
               </>
             ) : (
-              g.reason ?? "Not built yet."
+              !g.repo ? (
+                <>
+                  No development folder is set. <Link href="/settings">Set it in Settings</Link> first.
+                </>
+              ) : (
+                g.reason ?? "Not built yet."
+              )
             )}
           </p>
           <p className="muted">
