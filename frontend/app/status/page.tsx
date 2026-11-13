@@ -5,6 +5,7 @@ import Office from "../../components/Office";
 import AgentState from "../../components/AgentState";
 import { Alert, Badge, Empty, PageHead } from "../../components/ui";
 import { api } from "../../lib/api";
+import { shownRows } from "../../lib/agents";
 import { CHAR_STYLES, CharStyle, Environments, Handoff, seatLabel } from "../../lib/office-scene";
 import { useOffice } from "../../lib/use-office";
 
@@ -77,8 +78,7 @@ export default function Status() {
   }
 
   const answered = checks ? Object.values(checks).filter((c) => c.responding).length : 0;
-  // A failed run whose model answers the check is shown as ready: the failure was in that run (a rate limit, say), not in the agent.
-  const shown = (rows ?? []).map((r) => (r.state === "failed" && checks?.[r.role]?.responding ? { ...r, state: "idle", lastRun: "failed" } : r));
+  const shown = shownRows(rows ?? [], checks);
   const sel = shown.find((r) => r.role === selected);
   return (
     <>

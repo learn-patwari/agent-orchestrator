@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { runningCount } from "../lib/agents";
 import { api } from "../lib/api";
 
 const fmt = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M` : n >= 10_000 ? `${(n / 1000).toFixed(1)}k` : n.toLocaleString());
@@ -26,7 +27,7 @@ export default function LiveStrip({ rows, every = 5000 }: { rows: { state: strin
       clearInterval(t);
     };
   }, [every]);
-  const active = rows.filter((r) => r.state === "running").length;
+  const active = runningCount(rows);
   return (
     <div className="live-strip" role="status" aria-label="Live agent numbers">
       <span><b>{active}</b> of {rows.length} working now</span>

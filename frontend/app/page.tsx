@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Alert, Badge, PageHead } from "../components/ui";
+import { runningCount } from "../lib/agents";
 import { api } from "../lib/api";
 
 type State = "loading" | "setup" | "login" | "in";
@@ -22,7 +23,7 @@ export default function Home() {
     const roles = ok(r);
     setC({
       providers: ok(p)?.length ?? 0, roles: roles?.roles.length ?? 0, rolesSet: roles ? Object.keys(roles.models).length : 0,
-      features: ok(f)?.length ?? 0, open: ok(i)?.length ?? 0, agentsBusy: (ok(s) ?? []).filter((x) => x.state === "running").length,
+      features: ok(f)?.length ?? 0, open: ok(i)?.length ?? 0, agentsBusy: runningCount(ok(s) ?? []),
     });
   }
 
