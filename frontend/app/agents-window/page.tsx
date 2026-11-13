@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import AgentState from "../../components/AgentState";
+import LiveStrip from "../../components/LiveStrip";
 import Office from "../../components/Office";
 import { CHAR_STYLES, CharStyle, Environments, seatLabel } from "../../lib/office-scene";
 import { useOffice } from "../../lib/use-office";
@@ -28,6 +29,7 @@ export default function AgentsWindow() {
       {err && <p role="alert" className="muted">{err}</p>}
       {rows.length > 0 && (
         <>
+          <LiveStrip rows={rows} />
           <Office team={rows} handoffs={data.handoffs ?? []} environments={data.environments ?? NO_ENV} paused={false} look={look} onSelect={setSelected} />
           <div className="agent-chips" aria-label="Agent status">
             {rows.map((r) => (

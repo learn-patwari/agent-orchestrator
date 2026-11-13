@@ -154,14 +154,15 @@ button.chip[aria-pressed="true"] { border-color: var(--accent); background: var(
 main:has(.office-canvas){max-width:none;padding-bottom:16px}
 /* office on the left, the agent list and details on the right: everything on one screen */
 .office-layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:16px;align-items:start}
-.office-layout .office-canvas{width:min(100%, calc((100vh - 250px) * 1.6));margin:12px 0 0}
-.office-side{display:flex;flex-direction:column;gap:8px;margin-top:12px;max-height:calc(100vh - 250px);overflow:auto}
+.office-layout .office-canvas{width:min(100%, calc((100vh - 290px) * 1.6));margin:12px 0 0}
+.office-side{display:flex;flex-direction:column;gap:8px;margin-top:12px;max-height:calc(100vh - 290px);overflow:auto}
 .office-side .agent-chips{flex-direction:column;margin:0}
 .office-side .agent-chip{width:100%;justify-content:flex-start}
 .office-side .agent-chip small{margin-left:auto}
 .office-side .caption{margin:0;font-size:.78rem}
 @media (max-width:900px){.office-layout{grid-template-columns:1fr}.office-side{max-height:none}.office-layout .office-canvas{width:100%}}
 .office-canvas{width:min(100%, calc((100vh - 270px) * 1.6));margin-inline:auto}
+.live-strip{display:flex;flex-wrap:wrap;gap:4px 18px;align-items:center;font-size:.86rem;margin-top:8px}
 .agent-state{display:inline-flex;align-items:center;gap:6px;font-size:.82rem;font-weight:600}
 .detached{padding:10px 14px}
 .detached .office-canvas{margin-top:0;width:min(100%, calc((100vh - 90px) * 1.6))}

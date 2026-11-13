@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { api } from "./api";
 
 /** The office feed (team rows, hand-offs, environments ...) polled every few seconds. One place for the Agents page and the detached window. */
-export function useOffice(every = 4000) {
+export function useOffice(every = 5000) {
   const [data, setData] = useState<any>(null);
   const [err, setErr] = useState("");
   useEffect(() => {

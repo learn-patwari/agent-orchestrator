@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import LiveStrip from "../../components/LiveStrip";
 import Office from "../../components/Office";
 import AgentState from "../../components/AgentState";
 import { Alert, Badge, Empty, PageHead } from "../../components/ui";
@@ -160,7 +161,10 @@ export default function Status() {
 
       {rows && rows.length > 0 && view === "office" && (
         <div className="office-layout">
+          <div className="office-main">
+          <LiveStrip rows={rows} />
           <Office team={rows} handoffs={handoffs} environments={env} paused={paused} look={look} onSelect={setSelected} />
+          </div>
           <div className="office-side">
           <div className="agent-chips" aria-label="Agent status">
             {rows.map((r) => (
