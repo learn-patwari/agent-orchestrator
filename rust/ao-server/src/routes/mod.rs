@@ -26,6 +26,16 @@ pub(crate) fn role_dirs() -> Result<Vec<PathBuf>, ApiError> {
     Ok(paths(&settings()?["role_dirs"]))
 }
 
+/// Role names to list in the shared snapshot: the configured roles, or the built-in team when none are configured.
+pub(crate) fn configured_roles() -> Vec<String> {
+    let roles = ao_core::runtime::roles::load_roles(&role_dirs().unwrap_or_default());
+    if roles.is_empty() {
+        core::ROLES.iter().map(|s| s.to_string()).collect()
+    } else {
+        roles.keys().cloned().collect()
+    }
+}
+
 pub(crate) fn skill_registry() -> Result<SkillRegistry, ApiError> {
     Ok(SkillRegistry::new(&paths(&settings()?["skill_paths"])))
 }

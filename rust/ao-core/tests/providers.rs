@@ -120,7 +120,8 @@ fn anthropic_complete_and_mapping() {
     assert_eq!(r.url, "https://llm.example/v1/messages");
     assert!(header(&r, "x-api-key").starts_with("sk-test"));
     assert_eq!(header(&r, "anthropic-version"), "2023-06-01");
-    assert_eq!(b["system"], "be brief");
+    assert_eq!(b["system"][0]["text"], "be brief");
+    assert_eq!(b["system"][0]["cache_control"]["type"], "ephemeral", "the unchanging prompt prefix is cached");
     assert_eq!(b["tools"][0]["input_schema"]["type"], "object");
     let roles: Vec<_> = b["messages"].as_array().unwrap().iter().map(|m| m["role"].clone()).collect();
     assert_eq!(roles, vec![json!("user"), json!("assistant"), json!("user")]);
@@ -419,4 +420,20 @@ fn pasted_program_paths_are_cleaned() {
     assert_eq!(normalise_exe("  'C:/x/claude.exe' "), "C:/x/claude.exe");
     assert_eq!(normalise_exe("&"), "");
     assert_eq!(normalise_exe("claude"), "claude");
+}
+
+#[test]
+fn cached_input_tokens_are_counted_so_usage_matches_what_the_provider_bills() {
+    // the claude program reports most of its input as cache tokens, apart from `input_tokens`
+    let r: Runner = Arc::new(|_a: &[String], _s: &str, _e: &HashMap<String, String>, _t: f64| {
+        let out = json!({"type": "result", "is_error": false, "result": "hi", "usage": {"input_tokens": 2, "cache_creation_input_tokens": 9000, "cache_read_input_tokens": 30000, "output_tokens": 50}});
+        Ok((0, out.to_string(), String::new()))
+    });
+    let c = run(&cli(r), &[user("hello")], None).unwrap();
+    assert_eq!((c.usage.input_tokens, c.usage.output_tokens), (39002, 50));
+
+    let (t, _) = transport(|_| ok(json!({"model": "m", "stop_reason": "end_turn", "content": [{"type": "text", "text": "x"}],
+        "usage": {"input_tokens": 5, "cache_creation_input_tokens": 100, "cache_read_input_tokens": 400, "output_tokens": 7}})));
+    let c = anthropic(t).complete("m", &[user("hi")], None, 100, None).unwrap();
+    assert_eq!((c.usage.input_tokens, c.usage.output_tokens), (505, 7));
 }

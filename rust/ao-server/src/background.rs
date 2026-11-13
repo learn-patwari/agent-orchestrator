@@ -47,3 +47,13 @@ pub fn start(st: AppState, every: Duration) {
         tick_once(&st);
     });
 }
+
+/// Publishes the shared read-only snapshot about once a second for as long as the app runs. Agents read it instead of the
+/// database or the model. Off with `AO_NO_SCHEDULER=1` like the loop above.
+pub fn publish_snapshots() {
+    if std::env::var("AO_NO_SCHEDULER").is_ok_and(|v| !v.is_empty()) {
+        return;
+    }
+    let publisher = ao_core::snapshot::start_publisher(Duration::from_secs(1), crate::routes::configured_roles);
+    std::mem::forget(publisher); // runs until the process ends
+}

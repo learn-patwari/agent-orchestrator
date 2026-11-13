@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub const TABLES: &[&str] = &[
     "users", "projects", "features", "tasks", "agents", "runs", "messages", "approvals", "assumptions", "budgets",
     "providers", "mcp_servers", "plugins", "llm_calls", "inbox", "audit", "notifications", "schedules", "srs_versions",
-    "handoffs", "incidents", "ext_agents",
+    "handoffs", "incidents", "ext_agents", "mailbox",
 ];
 
 #[derive(Debug, thiserror::Error)]

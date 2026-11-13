@@ -100,9 +100,55 @@ fn tool_specs() -> Vec<ToolSpec> {
     ]
 }
 
+/// Earlier messages the model sees, and how long each may be. The full chat stays stored; this only bounds the prompt.
+const HISTORY_MESSAGES: usize = 6;
+const HISTORY_CHARS: usize = 500;
+/// Agents one chat message may start, and the longest tool result sent back to the model.
+const MAX_DELEGATIONS: usize = 3;
+const TOOL_RESULT_CHARS: usize = 1500;
+
+fn shorten(s: &str, n: usize) -> String {
+    if s.chars().count() <= n {
+        return s.to_string();
+    }
+    format!("{}… [shortened]", s.chars().take(n).collect::<String>())
+}
+
 fn history(limit: usize) -> Result<Vec<Message>, DbError> {
     let chat: Vec<Value> = DocRepo::new("messages")?.list()?.into_iter().filter(|m| m["chat"] == true).collect();
-    Ok(chat[chat.len().saturating_sub(limit)..].iter().map(|m| Message::new(m["role"].as_str().unwrap_or(""), m["content"].as_str().unwrap_or(""))).collect())
+    Ok(chat[chat.len().saturating_sub(limit)..].iter().map(|m| Message::new(m["role"].as_str().unwrap_or(""), &shorten(m["content"].as_str().unwrap_or(""), HISTORY_CHARS))).collect())
+}
+
+/// A plain status or wake-up request needs no model: the answer is already in the shared state. Anything that asks for work
+/// (build, fix, write, deploy ...) goes to the model.
+fn is_status_request(text: &str) -> bool {
+    let t = text.to_lowercase();
+    if t.chars().count() > 90 {
+        return false;
+    }
+    let work = ["build", "implement", "fix", "write", "create", "add ", "deploy", "test ", "review", "change", "update", "delete", "merge", "refactor", "design", "release", "feature", "page"];
+    if work.iter().any(|w| t.contains(w)) {
+        return false;
+    }
+    let asks = ["status", "wake", "respond", "roll call", "report in", "who is running", "who is busy", "who is blocked", "who is working", "who's running", "who's busy"];
+    asks.iter().any(|a| t.contains(a))
+}
+
+fn status_reply(s: &crate::snapshot::Snapshot) -> String {
+    let mut lines = vec!["Team status, read from the shared state (no model was used, nothing was started):".to_string()];
+    for r in &s.team {
+        let mut line = format!("- {}: {}", crate::runtime::py_str(&r["role"]), crate::runtime::py_str(&r["state"]));
+        if let Some(t) = r["task"].as_str().filter(|t| !t.is_empty()) {
+            line += &format!(" on '{}' ({} steps)", shorten(t.lines().find_map(|l| l.strip_prefix("Task: ")).unwrap_or(t), 80), r["steps"].as_i64().unwrap_or(0));
+        }
+        if let Some(e) = r["error"].as_str().filter(|e| !e.is_empty()) {
+            line += &format!(", last error: {}", shorten(e, 80));
+        }
+        lines.push(line);
+    }
+    lines.push(format!("Inbox: {} open item(s) waiting for you. Agents only run when they are given work; tell me what to do and I will delegate it.", s.open_inbox));
+    lines.join("
+")
 }
 
 pub struct Orchestrator {
@@ -113,15 +159,22 @@ pub struct Orchestrator {
     context: String, // live team snapshot, rebuilt by the caller on every message
     delegator: Option<Box<dyn Delegator>>,
     max_rounds: usize,
+    roles: Vec<String>,
 }
 
 impl Orchestrator {
     pub fn new(provider: Box<dyn Provider>, model: &str, role_body: &str, provider_id: &str, context: &str) -> Self {
-        Orchestrator { p: provider, model: model.into(), body: role_body.into(), provider_id: provider_id.into(), context: context.into(), delegator: None, max_rounds: 6 }
+        Orchestrator { p: provider, model: model.into(), body: role_body.into(), provider_id: provider_id.into(), context: context.into(), delegator: None, max_rounds: 6, roles: vec![] }
     }
 
     pub fn delegator(mut self, d: Box<dyn Delegator>) -> Self {
         self.delegator = Some(d);
+        self
+    }
+
+    /// The roles to list in a status answer (roles that never ran still appear as idle).
+    pub fn roles(mut self, roles: Vec<String>) -> Self {
+        self.roles = roles;
         self
     }
 
@@ -153,15 +206,20 @@ impl Orchestrator {
             Ok(v) => py_dumps(&v),
             Err(e) => format!("ERROR: {e}"),
         };
-        wrap_untrusted(name, &redact(&text))
+        wrap_untrusted(name, &shorten(&redact(&text), TOOL_RESULT_CHARS))
     }
 
     pub fn chat(&self, text: &str) -> Result<Value, OrchestratorError> {
         let warning = looks_like_secret(text).then_some(KEY_WARNING);
         let clean = if warning.is_some() { redact(text) } else { text.to_string() };
-        let hist = history(20)?;
+        let hist = history(HISTORY_MESSAGES)?;
         let messages = DocRepo::new("messages")?;
         messages.create(json!({"chat": true, "role": "user", "content": clean, "at": now()}), None)?;
+        if warning.is_none() && is_status_request(&clean) {
+            let reply = status_reply(crate::snapshot::rebuild(&self.roles)?.as_ref());
+            messages.create(json!({"chat": true, "role": "assistant", "content": reply, "at": now()}), None)?;
+            return Ok(json!({"reply": reply, "warning": Value::Null}));
+        }
         let d = if self.delegator.is_some() { DELEGATION_RULES } else { "" };
         let system = [self.body.as_str(), RULES, d, self.context.as_str()].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join("\n\n");
         let mut convo = vec![Message::new("system", &system)];
@@ -170,6 +228,8 @@ impl Orchestrator {
         let specs = tool_specs();
         let tools: Option<&[ToolSpec]> = self.delegator.as_ref().map(|_| specs.as_slice());
         let mut reply = None;
+        let (mut started, mut repeats) = (0usize, 0usize);
+        let mut seen_calls: std::collections::HashSet<String> = Default::default();
         for _ in 0..self.max_rounds {
             let c = self.p.complete(&self.model, &convo, tools, 1024, None)?;
             record_call("orchestrator", &self.provider_id, &self.model, c.usage, None)?;
@@ -178,8 +238,28 @@ impl Orchestrator {
                 break;
             };
             convo.push(Message::assistant(&c.text, c.tool_calls.clone()));
+            let mut again = false;
             for tc in &c.tool_calls {
-                convo.push(Message::tool(&self.tool(d, &tc.name, &tc.arguments), &tc.id));
+                let key = format!("{}{}", tc.name, py_dumps(&tc.arguments));
+                let out = if !seen_calls.insert(key) {
+                    again = true;
+                    wrap_untrusted(&tc.name, "ERROR: you already made this exact call and have its result. Answer the human now from what you have.")
+                } else if tc.name == "delegate" && started >= MAX_DELEGATIONS {
+                    wrap_untrusted(&tc.name, &format!("ERROR: limit reached, at most {MAX_DELEGATIONS} agents are started per message. Say which work is still waiting; the human can ask again."))
+                } else {
+                    if tc.name == "delegate" {
+                        started += 1;
+                    }
+                    self.tool(d, &tc.name, &tc.arguments)
+                };
+                convo.push(Message::tool(&out, &tc.id));
+            }
+            if again {
+                repeats += 1;
+                if repeats >= 2 {
+                    reply = Some("I kept asking for the same thing and stopped. Check the Agents page for the runs I started, or ask me again with more detail (same call repeated).".to_string());
+                    break;
+                }
             }
         }
         let reply = reply.unwrap_or_else(|| "I made too many tool calls in a row without an answer, so I stopped. Check the Agents page for the runs I started.".to_string());

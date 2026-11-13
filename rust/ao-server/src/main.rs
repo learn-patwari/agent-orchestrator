@@ -13,6 +13,7 @@ async fn main() {
     };
     let state = AppState::default();
     ao_server::background::start(state.clone(), std::time::Duration::from_secs(30));
+    ao_server::background::publish_snapshots();
     println!("ao-backend {} listening on http://127.0.0.1:{port}", env!("CARGO_PKG_VERSION"));
     if let Err(e) = axum::serve(listener, ao_server::app_with_ui(state, std::env::var("AO_UI_DIR").ok().filter(|d| !d.is_empty()).map(std::path::PathBuf::from))).await {
         eprintln!("ao-backend: {e}");

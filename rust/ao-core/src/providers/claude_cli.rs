@@ -67,6 +67,18 @@ pub fn find_claude() -> String {
     "claude".to_string()
 }
 
+/// The program to run for a saved value. A path that no longer exists (the Claude desktop app moves to a new version folder
+/// when it updates) falls back to the installed copy; a bare name such as `claude` is left to the PATH search.
+pub fn resolve_exe(value: &str) -> String {
+    let r = resolve(value);
+    let is_path = r.contains(['\\', '/']);
+    if r.is_empty() || (is_path && !Path::new(&r).is_file()) {
+        find_claude()
+    } else {
+        r
+    }
+}
+
 fn default_runner(argv: &[String], stdin: &str, env: &HashMap<String, String>, timeout: f64) -> Result<(i32, String, String), RunError> {
     crate::proc::run(argv, None, env, stdin, timeout)
 }
@@ -110,8 +122,9 @@ pub struct ClaudeCliProvider {
 
 impl ClaudeCliProvider {
     pub fn new(base_url: &str, runner: Option<Runner>) -> Self {
-        let r = resolve(base_url);
-        ClaudeCliProvider { exe: if r.is_empty() { find_claude() } else { r }, run: runner.unwrap_or_else(|| Arc::new(default_runner)), timeout: 300.0 }
+        // with a custom runner (tests) the value is used exactly as given
+        let exe = if runner.is_some() { let r = resolve(base_url); if r.is_empty() { find_claude() } else { r } } else { resolve_exe(base_url) };
+        ClaudeCliProvider { exe, run: runner.unwrap_or_else(|| Arc::new(default_runner)), timeout: 300.0 }
     }
 
     fn extract_calls(text: &str, allowed: &[&str]) -> (String, Vec<ToolCall>) {
@@ -187,7 +200,7 @@ impl Provider for ClaudeCliProvider {
             text,
             stop_reason: if calls.is_empty() { "end_turn" } else { "tool_use" }.to_string(),
             tool_calls: calls,
-            usage: Usage { input_tokens: u["input_tokens"].as_u64().unwrap_or(0), output_tokens: u["output_tokens"].as_u64().unwrap_or(0) },
+            usage: Usage { input_tokens: ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"].iter().map(|k| u[*k].as_u64().unwrap_or(0)).sum(), output_tokens: u["output_tokens"].as_u64().unwrap_or(0) },
             model: model.to_string(),
         })
     }

@@ -85,7 +85,8 @@ impl HttpProvider {
                 body.insert("messages".into(), Value::Array(anthropic_messages(messages)));
                 body.insert("max_tokens".into(), json!(max_tokens));
                 if !system.is_empty() && !system.join("\n\n").is_empty() {
-                    body.insert("system".into(), json!(system.join("\n\n")));
+                    // the system prompt is the same on every call: mark it cacheable so repeat calls are billed at the cached rate
+                    body.insert("system".into(), json!([{"type": "text", "text": system.join("\n\n"), "cache_control": {"type": "ephemeral"}}]));
                 }
                 if let Some(t) = temperature {
                     body.insert("temperature".into(), json!(t));
@@ -173,7 +174,7 @@ impl HttpProvider {
                 Ok(Completion {
                     text,
                     tool_calls: calls,
-                    usage: Usage { input_tokens: n("input_tokens"), output_tokens: n("output_tokens") },
+                    usage: Usage { input_tokens: n("input_tokens") + n("cache_creation_input_tokens") + n("cache_read_input_tokens"), output_tokens: n("output_tokens") },
                     stop_reason: data["stop_reason"].as_str().unwrap_or("").to_string(),
                     model,
                 })
