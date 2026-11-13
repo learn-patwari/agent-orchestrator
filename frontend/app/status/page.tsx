@@ -77,7 +77,9 @@ export default function Status() {
   }
 
   const answered = checks ? Object.values(checks).filter((c) => c.responding).length : 0;
-  const sel = rows?.find((r) => r.role === selected);
+  // A failed run whose model answers the check is shown as ready: the failure was in that run (a rate limit, say), not in the agent.
+  const shown = (rows ?? []).map((r) => (r.state === "failed" && checks?.[r.role]?.responding ? { ...r, state: "idle", lastRun: "failed" } : r));
+  const sel = shown.find((r) => r.role === selected);
   return (
     <>
       <PageHead title="Agents" sub="Your team at work. Click anyone for details." />
@@ -160,21 +162,22 @@ export default function Status() {
       {rows && rows.length === 0 && <Empty title="No agents yet">Agents appear here once roles are loaded.</Empty>}
 
       {rows && rows.length > 0 && view === "office" && (
-        <div className="office-layout">
+        <>
+          <LiveStrip rows={shown} />
+          <div className="office-layout">
           <div className="office-main">
-          <LiveStrip rows={rows} />
-          <Office team={rows} handoffs={handoffs} environments={env} paused={paused} look={look} onSelect={setSelected} />
+          <Office team={shown} handoffs={handoffs} environments={env} paused={paused} look={look} onSelect={setSelected} />
           </div>
           <div className="office-side">
           <div className="agent-chips" aria-label="Agent status">
-            {rows.map((r) => (
+            {shown.map((r) => (
               <button key={r.role} className="agent-chip" onClick={() => setSelected(r.role)} aria-pressed={selected === r.role}>
                 {seatLabel(r.role)} <AgentState state={r.state} />
                 {checks?.[r.role] && <small title={checks[r.role].detail}>{checks[r.role].responding ? "model answers" : "no answer"}</small>}
               </button>
             ))}
           </div>
-          <p className="muted caption">The colour is the agent&apos;s last run. “Model answers” is the Check agents result: a failed run can still have a working model, for example after a rate limit.</p>
+          <p className="muted caption">Colour = last run. “Model answers” = Check agents result.</p>
           <div className="card" aria-live="polite">
             {sel ? (
               <>
@@ -184,6 +187,7 @@ export default function Status() {
                   <dt>Task</dt><dd>{sel.task ?? "–"}</dd>
                   <dt>Model</dt><dd>{sel.model ?? "not set"}</dd>
                   <dt>Steps</dt><dd>{sel.steps}</dd>
+                  {sel.lastRun && (<><dt>Last run</dt><dd>failed, but the model answers now</dd></>)}
                 </dl>
               </>
             ) : (
@@ -192,6 +196,7 @@ export default function Status() {
           </div>
           </div>
         </div>
+        </>
       )}
 
       {rows && rows.length > 0 && view === "table" && (

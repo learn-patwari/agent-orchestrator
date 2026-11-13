@@ -151,16 +151,22 @@ button.chip[aria-pressed="true"] { border-color: var(--accent); background: var(
 
 /* office view */
 /* the office uses the whole window and always fits on one screen: as wide as the window, but never taller than it (320x200 scene) */
-main:has(.office-canvas){max-width:none;padding-bottom:16px}
-/* office on the left, the agent list and details on the right: everything on one screen */
-.office-layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:16px;align-items:start}
-.office-layout .office-canvas{width:min(100%, calc((100vh - 290px) * 1.6));margin:12px 0 0}
-.office-side{display:flex;flex-direction:column;gap:8px;margin-top:12px;max-height:calc(100vh - 290px);overflow:auto}
-.office-side .agent-chips{flex-direction:column;margin:0}
-.office-side .agent-chip{width:100%;justify-content:flex-start}
+/* the Agents office fills the window and never scrolls: a column that is exactly one screen tall, the canvas as large as fits (320x200 scene) */
+.shell:has(.office-layout){height:100vh;overflow:hidden}
+.shell:has(.office-layout) .content{min-height:0}
+main:has(.office-layout){max-width:none;min-height:0;overflow:hidden;display:flex;flex-direction:column;padding-top:12px;padding-bottom:10px}
+main:has(.office-layout) .page-head{margin-bottom:6px}
+main:has(.office-layout) .page-head p{display:none}
+main:has(.office-layout) .toolbar{margin-bottom:6px}
+.office-layout{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:14px;margin-top:6px}
+.office-main{container-type:size;min-height:0;min-width:0}
+.office-main .office-canvas{width:min(100cqw, 160cqh);margin:0}
+.office-side{display:flex;flex-direction:column;gap:5px;min-height:0;overflow:auto}
+.office-side .agent-chips{flex-direction:column;gap:4px;margin:0}
+.office-side .agent-chip{width:100%;justify-content:flex-start;padding:3px 10px}
 .office-side .agent-chip small{margin-left:auto}
-.office-side .caption{margin:0;font-size:.78rem}
-@media (max-width:900px){.office-layout{grid-template-columns:1fr}.office-side{max-height:none}.office-layout .office-canvas{width:100%}}
+.office-side .card{padding:10px 12px}
+@media (max-width:900px){.shell:has(.office-layout){height:auto;overflow:visible}main:has(.office-layout){overflow:visible}.office-layout{display:block}.office-main{container-type:normal}.office-main .office-canvas{width:100%}}
 .office-canvas{width:min(100%, calc((100vh - 270px) * 1.6));margin-inline:auto}
 .live-strip{display:flex;flex-wrap:wrap;gap:4px 18px;align-items:center;font-size:.86rem;margin-top:8px}
 .agent-state{display:inline-flex;align-items:center;gap:6px;font-size:.82rem;font-weight:600}
