@@ -190,7 +190,7 @@ export default function Providers() {
       </form>
 
       <h2>3. Models for roles <span className="muted" style={{ fontWeight: 400 }}>({rolesSet} of {roles.length} set)</span></h2>
-      <p className="muted">The Orchestrator and every agent need a provider and model before chat works.</p>
+      <p className="muted">The Orchestrator and every agent need a provider and model before chat works. There is no separate Save: a role marked “saved” below is already stored. To change one, pick a provider and model here, then press Use for All Roles or that row&apos;s Use Selection.</p>
       <div className="card">
         <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
           <div>
@@ -229,7 +229,9 @@ export default function Providers() {
                   <td><strong>{r}</strong></td>
                   <td>
                     {assigned[r] ? (
-                      `${list.find((p) => p.id === assigned[r].provider_id)?.name ?? "Unknown provider"} / ${assigned[r].model}`
+                      <>
+                        {`${list.find((p) => p.id === assigned[r].provider_id)?.name ?? "Unknown provider"} / ${assigned[r].model}`} <Badge status="saved" tone="ok" />
+                      </>
                     ) : (
                       <Badge status="not set" tone="warn" />
                     )}
