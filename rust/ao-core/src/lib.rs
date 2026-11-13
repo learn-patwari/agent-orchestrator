@@ -25,3 +25,4 @@ pub mod releases;
 pub mod rules;
 pub mod scheduler;
 pub mod secrets;
+pub mod snapshot;

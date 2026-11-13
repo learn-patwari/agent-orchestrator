@@ -76,7 +76,7 @@ pub fn make_runner(st: &AppState, role: &Role, ws: &Path, feature_id: Option<&st
     let names = skill_names(feature_id, task_id)?;
     let reg = skill_registry()?;
     let preload = reg.estimate(&names.iter().map(|s| s.as_str()).collect::<Vec<_>>()).bodies;
-    let mut tb = ToolBox::new(Workspace::new(ws), Some(skill_registry()?)).incidents(IncidentTool::new(&role.name).into_hook()).mcp(Box::new(RoleMcp::new(&role.name)));
+    let mut tb = ToolBox::new(Workspace::new(ws), Some(skill_registry()?)).role(&role.name).incidents(IncidentTool::new(&role.name).into_hook()).mcp(Box::new(RoleMcp::new(&role.name)));
     if let Some(flow) = agent_flow()? {
         tb = tb.pipeline(PipelineTool::new(&role.name, Some(flow)).into_hook());
     }

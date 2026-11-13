@@ -319,7 +319,7 @@ fn chat(st: &AppState, r: &Req) -> R {
     let roles = load_roles(&role_dirs()?);
     let provider = st.build_provider(&rec).map_err(|e| ApiError::new(400, e.to_string()))?;
     let body = roles.get("orchestrator").map_or("", |r| r.body.as_str()).to_string();
-    let o = Orchestrator::new(provider, mapping["model"].as_str().unwrap_or(""), &body, rec["id"].as_str().unwrap_or(""), &team_context(&roles)?).delegator(Box::new(RunDelegator { st: st.clone(), roles }));
+    let o = Orchestrator::new(provider, mapping["model"].as_str().unwrap_or(""), &body, rec["id"].as_str().unwrap_or(""), &team_context(&roles)?).roles(role_list(&roles)).delegator(Box::new(RunDelegator { st: st.clone(), roles }));
     match o.chat(&text) {
         Ok(v) => ok(v),
         Err(OrchestratorError::Provider(e)) => bad(502, redact(&format!("{}: {}", e.kind.as_str(), e.message))),

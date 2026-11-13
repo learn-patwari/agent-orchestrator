@@ -56,6 +56,7 @@ pub fn start_backend(port: u16, ui: Option<PathBuf>) -> Result<(), String> {
             };
             let state = AppState::default();
             ao_server::background::start(state.clone(), Duration::from_secs(30));
+            ao_server::background::publish_snapshots();
             let _ = tx.send(Ok(()));
             let _ = axum_serve(listener, app_with_ui(state, ui)).await;
         });

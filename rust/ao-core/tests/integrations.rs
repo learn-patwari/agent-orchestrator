@@ -670,7 +670,7 @@ fn an_unknown_tool_is_refused_and_chat_history_keeps_only_the_conversation() {
 #[test]
 fn a_runaway_tool_loop_stops_with_a_plain_message() {
     with_env(|_| {
-        let p = Script::new((0..20).map(|_| ("", vec![call("list_runs", json!({}))])).collect());
+        let p = Script::new((0..20).map(|i| ("", vec![call("list_runs", json!({"page": i}))])).collect()); // different each time, so not a repeat
         let out = with_delegator(&p, &Arc::new(FakeDelegator::default())).max_rounds(3).chat("loop").unwrap();
         assert!(p.seen.lock().unwrap().len() == 3 && s(&out["reply"]).to_lowercase().contains("too many"));
     });
@@ -780,4 +780,109 @@ fn check_pings_each_distinct_model_once_and_reports_per_role() {
     assert_eq!(by("orchestrator")["responding"], true);
     assert!(by("developer")["responding"] == false && s(&by("developer")["detail"]).contains("down"));
     assert!(by("tester")["responding"] == false && s(&by("tester")["detail"]).contains("no model"));
+}
+
+// ---------------------------------------------------------------- cheap chat: no model call for status, bounded rounds
+
+fn model_calls() -> usize {
+    DocRepo::new("llm_calls").unwrap().list().unwrap().len()
+}
+
+#[test]
+fn a_status_or_wake_request_is_answered_from_the_shared_state_without_a_model_call() {
+    with_env(|_| {
+        DocRepo::new("runs").unwrap().create(json!({"role": "architect", "task": "design the API", "status": "running", "steps": 2, "error": null}), None).unwrap();
+        let p = Script::text("MODEL SHOULD NOT BE ASKED");
+        let d = Arc::new(FakeDelegator::default());
+        for text in ["wake everyagent for status", "make everyone respond", "status?", "Who is running right now"] {
+            let out = with_delegator(&p, &d).chat(text).unwrap();
+            let reply = s(&out["reply"]).to_string();
+            assert!(reply.contains("architect") && reply.contains("running") && reply.contains("design the API"), "{text}: {reply}");
+            assert!(!reply.contains("MODEL SHOULD NOT"));
+        }
+        assert!(p.seen.lock().unwrap().is_empty(), "the model was not asked");
+        assert_eq!(model_calls(), 0, "no tokens were spent");
+        assert!(d.started.lock().unwrap().is_empty(), "waking for status starts no agent runs");
+        assert_eq!(chat_log().len(), 8, "both sides are still stored");
+    });
+}
+
+#[test]
+fn a_request_with_real_work_still_goes_to_the_model() {
+    with_env(|_| {
+        for text in ["wake the developer and build the login page", "status of the tax report feature: please fix the failing test", "which agents are up?"] {
+            let p = Script::text("ok");
+            with_delegator(&p, &Arc::new(FakeDelegator::default())).chat(text).unwrap();
+            assert_eq!(p.seen.lock().unwrap().len(), 1, "{text}");
+        }
+    });
+}
+
+#[test]
+fn the_model_sees_only_the_last_few_messages_each_cut_short() {
+    with_env(|_| {
+        let f = Script::new((0..12).map(|_| ("x".repeat(3000).leak() as &str, vec![])).collect());
+        let o = orch(&f, "sys");
+        for i in 0..10 {
+            o.chat(&format!("question {i}")).unwrap();
+        }
+        let last = f.seen.lock().unwrap().last().unwrap().clone();
+        let history: Vec<&Message> = last.iter().filter(|m| m.role != "system").collect();
+        assert!(history.len() <= 7, "history is {} messages", history.len()); // 6 earlier ones plus the new question
+        assert!(history.iter().all(|m| m.content.chars().count() <= 600), "long replies are cut in the prompt");
+        assert_eq!(history.last().unwrap().content, "question 9");
+        assert_eq!(chat_log().len(), 20, "the full conversation is still stored");
+        assert_eq!(chat_log()[1].1.len(), 3000);
+    });
+}
+
+#[test]
+fn one_message_may_start_only_a_few_agents() {
+    with_env(|_| {
+        let calls: Vec<ToolCall> = (0..5).map(|i| ToolCall::new(&format!("c{i}"), "delegate", json!({"role": format!("r{i}"), "task": format!("job {i}"), "area": "a", "done_criteria": ["done"]}))).collect();
+        let p = Script::new(vec![("", calls), ("started some", vec![])]);
+        let d = Arc::new(FakeDelegator::default());
+        with_delegator(&p, &d).chat("build lots of things").unwrap();
+        assert_eq!(d.started.lock().unwrap().len(), 3);
+        let msgs = tool_msgs(&p, 1);
+        assert!(msgs[3].content.contains("limit") && msgs[4].content.contains("limit"), "{}", msgs[3].content);
+    });
+}
+
+#[test]
+fn asking_for_the_same_thing_again_stops_the_loop_early() {
+    with_env(|_| {
+        let same = || vec![call("list_runs", json!({}))];
+        let p = Script::new((0..6).map(|_| ("", same())).collect());
+        let out = with_delegator(&p, &Arc::new(FakeDelegator::default())).chat("do the thing that needs tools").unwrap();
+        assert!(p.seen.lock().unwrap().len() <= 3, "{} model calls", p.seen.lock().unwrap().len());
+        assert!(s(&out["reply"]).contains("same"), "{}", out["reply"]);
+    });
+}
+
+#[test]
+fn a_long_tool_result_is_cut_before_it_goes_back_to_the_model() {
+    with_env(|_| {
+        struct Big;
+        impl Delegator for Big {
+            fn delegate(&self, _: &str, _: &str, _: &str, _: &[String], _: &str, _: Option<&str>, _: Option<&str>) -> Result<Value, DelegationError> {
+                Ok(json!({}))
+            }
+            fn report(&self, _: &str) -> Result<Value, DelegationError> {
+                Ok(json!({"result": "z".repeat(20000)}))
+            }
+            fn request_prod(&self, _: &str) -> Result<Value, DelegationError> {
+                Ok(json!({}))
+            }
+            fn runs(&self) -> Result<Value, DelegationError> {
+                Ok(json!([]))
+            }
+            fn ask_agent(&self, _: &str, _: &str) -> Result<Value, DelegationError> {
+                Ok(json!({}))
+            }
+        }
+        let p = Script::new(vec![("", vec![call("get_report", json!({"run_id": "r1"}))]), ("done", vec![])]);
+        orch(&p, "sys").delegator(Box::new(Big)).chat("read the report of r1 and summarize").unwrap();
+        assert!(tool_msgs(&p, 1)[0].content.len() < 3000);
+    });
 }
