@@ -30,7 +30,19 @@ fn resolve(dir: &Path, url_path: &str) -> Option<PathBuf> {
     }
     let base = dir.join(rel);
     let candidates = [base.clone(), base.with_extension("html"), base.join("index.html")];
-    candidates.into_iter().find(|p| p.is_file())
+    candidates.into_iter().find(|p| p.is_file()).or_else(|| next_page_data(dir, rel))
+}
+
+/// Next 16 exports a page's data as `<dir>/__next.<a>/<b>/__PAGE__.txt` but asks for `<dir>/__next.<a>.<b>.__PAGE__.txt`.
+fn next_page_data(dir: &Path, rel: &Path) -> Option<PathBuf> {
+    let name = rel.file_name()?.to_str()?;
+    let parts: Vec<&str> = name.strip_prefix("__next.")?.strip_suffix(".txt")?.split('.').collect();
+    let (last, head) = parts.split_last()?;
+    let (first, middle) = head.split_first()?;
+    let mut p = dir.join(rel.parent()?).join(format!("__next.{first}"));
+    p.extend(middle);
+    p.push(format!("{last}.txt"));
+    p.is_file().then_some(p)
 }
 
 fn reply(status: StatusCode, ct: &str, body: Vec<u8>) -> Response {
