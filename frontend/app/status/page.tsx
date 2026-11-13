@@ -159,16 +159,18 @@ export default function Status() {
       {rows && rows.length === 0 && <Empty title="No agents yet">Agents appear here once roles are loaded.</Empty>}
 
       {rows && rows.length > 0 && view === "office" && (
-        <>
+        <div className="office-layout">
           <Office team={rows} handoffs={handoffs} environments={env} paused={paused} look={look} onSelect={setSelected} />
+          <div className="office-side">
           <div className="agent-chips" aria-label="Agent status">
             {rows.map((r) => (
               <button key={r.role} className="agent-chip" onClick={() => setSelected(r.role)} aria-pressed={selected === r.role}>
-                <AgentState state={r.state} /> {seatLabel(r.role)}
+                {seatLabel(r.role)} <AgentState state={r.state} />
+                {checks?.[r.role] && <small title={checks[r.role].detail}>{checks[r.role].responding ? "model answers" : "no answer"}</small>}
               </button>
             ))}
           </div>
-          <p className="muted caption">The office boy only walks when the app records a real hand-off. The receptionist and the cat are just for fun.</p>
+          <p className="muted caption">The colour is the agent&apos;s last run. “Model answers” is the Check agents result: a failed run can still have a working model, for example after a rate limit.</p>
           <div className="card" aria-live="polite">
             {sel ? (
               <>
@@ -184,7 +186,8 @@ export default function Status() {
               <span className="muted">Click a person, or a status button, to see its role, task and model.</span>
             )}
           </div>
-        </>
+          </div>
+        </div>
       )}
 
       {rows && rows.length > 0 && view === "table" && (

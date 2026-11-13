@@ -22,7 +22,7 @@ export default function Home() {
     const roles = ok(r);
     setC({
       providers: ok(p)?.length ?? 0, roles: roles?.roles.length ?? 0, rolesSet: roles ? Object.keys(roles.models).length : 0,
-      features: ok(f)?.length ?? 0, open: ok(i)?.length ?? 0, agentsBusy: (ok(s) ?? []).filter((x) => x.state !== "idle").length,
+      features: ok(f)?.length ?? 0, open: ok(i)?.length ?? 0, agentsBusy: (ok(s) ?? []).filter((x) => x.state === "running").length,
     });
   }
 
