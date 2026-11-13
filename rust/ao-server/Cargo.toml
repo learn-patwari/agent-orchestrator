@@ -1,0 +1,22 @@
+[package]
+name = "ao-server"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "ao_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ao-backend"
+path = "src/main.rs"
+
+[dependencies]
+ao-core = { path = "../ao-core" }
+axum = "0.7"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+tempfile = "3"

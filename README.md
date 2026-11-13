@@ -1,20 +1,20 @@
 # Agent Orchestrator
 
-Standalone web app that runs a team of AI agents for software development. See `docs/srs/orchestrator-app.md` (requirements and plan) and `docs/PROGRESS.md` (current state).
+Windows desktop app that runs a team of AI agents for software development. See `docs/srs/orchestrator-app.md` (requirements and plan), `docs/design/rust-port.md` (the Rust design) and `docs/PROGRESS.md` (current state).
 
-## Run locally
-Needs Python 3.12 and Node 20+.
+## Build and test
+Needs Rust (stable) and, for the UI and installer, Node 20+.
 
 ```bash
-cd backend && pip install -r requirements-dev.txt && python -m pytest -q
-cd backend && python -m uvicorn app.main:app --port 8000
-cd frontend && npm ci && npm run build && npm start
+cd rust && cargo test                 # ao-core and ao-server
+cd rust && cargo test -p ao-desktop   # the desktop shell (slower to build)
+cd rust && cargo run -p ao-server     # backend only, API on http://127.0.0.1:8000
 ```
 
-Open http://localhost:3000, set a password on first run, then add an LLM provider (base URL + API key) and use Test connection. Data is stored in `backend/data/` (SQLite, encrypted API keys); override with `AO_DATA_DIR`. Set `AO_SECRET_KEY` (a Fernet key) to keep the encryption key outside the data folder.
+Data is stored in `AO_DATA_DIR` (SQLite, encrypted API keys); set `AO_SECRET_KEY` (a Fernet key) to keep the encryption key outside the data folder.
+
+## Installer
+`build-installer-rust.cmd` exports the UI (`build-frontend-static.cmd`) and builds a per-user NSIS installer with the Tauri bundler. The app runs the backend in process and serves the UI and API from one port (default 8765). Data lives in `%APPDATA%\agent-orchestrator-desktop\data`.
 
 ## Layout
-`backend/` FastAPI + SQLite repository layer, auth, settings, LLM provider adapters. `frontend/` Next.js UI (proxies `/api` to the backend, `AO_BACKEND_URL`). `docs/` SRS, plans, progress. `reference/` read-only source material from the BookMeDoc workflow.
-
-## Windows desktop app (test build)
-Double-click `run-desktop.cmd` (or run it in a terminal). First run installs Python and Node packages and builds the UI, then opens the app window. Needs Python 3.12 and Node 20+ on PATH (or set `AO_PYTHON`). The app uses ports 8765 (backend) and 3765 (UI); data and logs are under `%APPDATA%\agent-orchestrator-desktop\`. `cd desktop && npm run smoke` starts everything, checks it, and exits. This is a runnable shell, not yet an installer: bundling Python and producing a `.exe` installer is still to do.
+`rust/` Cargo workspace: `ao-core` (domain logic), `ao-server` (HTTP API, 93 routes), `ao-desktop` (Tauri shell). `frontend/` Next.js UI, built as a static export. `plugins/` and `.development/` ship inside the installer. `docs/` SRS, plans, progress. `reference/` read-only source material from the BookMeDoc workflow. The earlier Python backend and Electron shell were removed in the cut-over commit; they remain in git history.
