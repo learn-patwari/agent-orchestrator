@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Alert, PageHead } from "../../components/ui";
+import DevFolderCard from "../../components/DevFolderCard";
 import { api } from "../../lib/api";
 
 export default function Settings() {
@@ -33,6 +34,7 @@ export default function Settings() {
   return (
     <>
       <PageHead title="Settings" sub="Changes save as soon as you leave a field." />
+      <DevFolderCard />
       <div className="card">
         <h2>Merging</h2>
         <label htmlFor="ms">Merge style</label>

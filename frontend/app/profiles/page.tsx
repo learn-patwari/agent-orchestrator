@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Alert, Badge, PageHead } from "../../components/ui";
+import GraphCard from "../../components/GraphCard";
 import { api } from "../../lib/api";
 
 const FIELDS: [string, string][] = [
@@ -119,6 +120,7 @@ export default function Profiles() {
         </div>
         {wMsg && <Alert kind="ok">{wMsg}</Alert>}
       </form>
+      <GraphCard />
       {d && (
         <ul className="plain" aria-label="Profiles">
           {d.profiles.map((p: any) => (

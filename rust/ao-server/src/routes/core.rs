@@ -55,6 +55,67 @@ fn get_settings(_: &AppState, _: &Req) -> R {
     ok(settings()?)
 }
 
+/// What people paste is not always a bare path: surrounding spaces and quotes go.
+fn clean_path(v: &str) -> String {
+    v.trim().trim_matches(|c| c == '"' || c == '\'').trim().to_string()
+}
+
+/// A comparable form of a path that may not exist yet: the nearest existing parent is resolved, the rest appended.
+fn comparable(p: &str) -> String {
+    let path = Path::new(p);
+    let mut rest: Vec<std::ffi::OsString> = vec![];
+    let mut cur = path.to_path_buf();
+    while !cur.exists() {
+        match (cur.file_name().map(|n| n.to_os_string()), cur.parent().map(|p| p.to_path_buf())) {
+            (Some(n), Some(parent)) => {
+                rest.push(n);
+                cur = parent;
+            }
+            _ => break,
+        }
+    }
+    let mut base = std::fs::canonicalize(&cur).unwrap_or(cur);
+    for n in rest.into_iter().rev() {
+        base.push(n);
+    }
+    base.to_string_lossy().replace('\\', "/").trim_start_matches("//?/").trim_end_matches('/').to_lowercase()
+}
+
+/// The development folder must be a folder, and task worktrees must live outside it (git refuses them inside).
+fn check_dev_paths(patch: &Map<String, Value>, current: &Value) -> Result<(), ApiError> {
+    let pick = |k: &str| patch.get(k).and_then(|v| v.as_str()).or_else(|| current[k].as_str()).unwrap_or("").to_string();
+    let (repo, wt) = (pick("repo_path"), pick("worktree_root"));
+    if patch.contains_key("repo_path") && !repo.is_empty() && !Path::new(&repo).is_dir() {
+        return Err(ApiError::new(400, format!("repo_path is not a folder: {repo}")));
+    }
+    if patch.contains_key("worktree_root") && !wt.is_empty() && Path::new(&wt).is_file() {
+        return Err(ApiError::new(400, format!("worktree_root is a file, not a folder: {wt}")));
+    }
+    if (patch.contains_key("repo_path") || patch.contains_key("worktree_root")) && !repo.is_empty() && !wt.is_empty() {
+        let (r, w) = (comparable(&repo), comparable(&wt));
+        if w == r || w.starts_with(&format!("{r}/")) {
+            return Err(ApiError::new(400, "worktree_root must not be inside repo_path (git cannot nest a worktree in its own repository)"));
+        }
+    }
+    Ok(())
+}
+
+/// Where agents write code: the development folder, whether it is a git repository, and where task worktrees go.
+fn dev_folder(_: &AppState, _: &Req) -> R {
+    let s = settings()?;
+    let repo = s["repo_path"].as_str().unwrap_or("").to_string();
+    let custom = s["worktree_root"].as_str().unwrap_or("").to_string();
+    let effective = if custom.is_empty() { ao_core::config::data_dir().join("worktrees").to_string_lossy().into_owned() } else { custom.clone() };
+    let exists = !repo.is_empty() && Path::new(&repo).is_dir();
+    ok(json!({
+        "repo_path": repo,
+        "exists": exists,
+        "is_git": exists && Path::new(&repo).join(".git").exists(),
+        "worktree_root": effective,
+        "worktree_root_custom": !custom.is_empty(),
+    }))
+}
+
 fn put_settings(_: &AppState, r: &Req) -> R {
     let Some(patch) = r.body.as_object() else { return bad(422, "the body must be a JSON object") };
     let cur = kv_get("settings", json!({}))?;
@@ -64,8 +125,15 @@ fn put_settings(_: &AppState, r: &Req) -> R {
         unknown.sort();
         return bad(400, format!("unknown settings: {}", py_list(&unknown)));
     }
+    let mut patch = patch.clone();
+    for key in ["repo_path", "worktree_root"] {
+        if let Some(v) = patch.get(key).and_then(|v| v.as_str()) {
+            patch.insert(key.into(), json!(clean_path(v)));
+        }
+    }
+    check_dev_paths(&patch, &known)?;
     let mut merged: Map<String, Value> = cur.as_object().cloned().unwrap_or_default();
-    for (k, v) in patch {
+    for (k, v) in &patch {
         if k == "feature_flags" {
             let mut flags = cur["feature_flags"].as_object().cloned().unwrap_or_default();
             flags.extend(v.as_object().cloned().unwrap_or_default());
@@ -225,6 +293,7 @@ pub fn mount(r: Routes) -> Routes {
         .open(Method::POST, "/api/auth/logout", logout)
         .guarded(Method::GET, "/api/settings", get_settings)
         .guarded(Method::PUT, "/api/settings", put_settings)
+        .guarded(Method::GET, "/api/dev-folder", dev_folder)
         .guarded(Method::GET, "/api/providers/presets", provider_presets)
         .guarded(Method::GET, "/api/providers/types", provider_types)
         .guarded(Method::GET, "/api/providers", list_providers)

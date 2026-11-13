@@ -250,6 +250,8 @@ pub fn mount(r: Routes) -> Routes {
         .guarded(Method::DELETE, "/api/mcp/servers/:name", mcp_delete)
         .guarded(Method::POST, "/api/mcp/servers/:name/test", mcp_test)
         .guarded(Method::GET, "/api/budget", budget_overview)
+        .guarded(Method::GET, "/api/graph", graph_status)
+        .guarded(Method::POST, "/api/graph/build", graph_build)
         .guarded(Method::GET, "/api/features/:fid/budget", get_budget)
         .guarded(Method::PUT, "/api/features/:fid/budget", set_budget)
         .guarded(Method::GET, "/api/profiles", get_profiles)
@@ -259,4 +261,42 @@ pub fn mount(r: Routes) -> Routes {
         .guarded(Method::PUT, "/api/pipeline/tasks/:tid/skills", set_task_skills)
         .guarded(Method::GET, "/api/features/:fid/skills", get_feature_skills)
         .guarded(Method::PUT, "/api/features/:fid/skills", set_feature_skills)
+}
+
+/// What the knowledge graph holds for the configured repository, plus what it has saved so far.
+fn graph_status(_: &AppState, _: &Req) -> R {
+    graph_reply()
+}
+
+fn graph_build(_: &AppState, _: &Req) -> R {
+    let repo = super::settings()?["repo_path"].as_str().unwrap_or("").trim().to_string();
+    if repo.is_empty() {
+        return bad(400, "set repo_path in settings first");
+    }
+    if !Path::new(&repo).is_dir() {
+        return bad(400, format!("repo_path is not a folder: {repo}"));
+    }
+    ao_core::graph::ensure(Path::new(&repo), true);
+    graph_reply()
+}
+
+fn graph_reply() -> R {
+    let repo = super::settings()?["repo_path"].as_str().unwrap_or("").trim().to_string();
+    let used = ao_core::graph::usage();
+    let mut out = json!({"built": false, "repo": repo, "queries": used["queries"], "tokens_saved": used["tokens_saved"]});
+    if repo.is_empty() {
+        out["reason"] = json!("set repo_path in settings first");
+        return ok(out);
+    }
+    match ao_core::graph::Graph::load(&ao_core::graph::graph_path(Path::new(&repo))) {
+        Some(g) => {
+            let s = g.stats();
+            for k in ["files", "symbols", "import_links", "test_files", "source_bytes", "by_language", "built_at"] {
+                out[k] = s[k].clone();
+            }
+            out["built"] = json!(true);
+        }
+        None => out["reason"] = json!("not built yet; press Build"),
+    }
+    ok(out)
 }
