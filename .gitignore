@@ -15,3 +15,7 @@ backend/build/
 backend/dist/
 rust/target/
 frontend/out/
+
+# frontend test output
+frontend/test-results/
+frontend/playwright-report/

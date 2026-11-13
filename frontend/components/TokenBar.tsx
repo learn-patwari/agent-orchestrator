@@ -34,7 +34,7 @@ export default function TokenBar() {
       }
     };
     load();
-    const t = setInterval(load, 8000);
+    const t = setInterval(load, 5000);
     document.addEventListener("visibilitychange", load);
     return () => {
       live = false;

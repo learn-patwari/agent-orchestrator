@@ -1,9 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
+import LiveStrip from "../../components/LiveStrip";
 import Office from "../../components/Office";
+import AgentState from "../../components/AgentState";
 import { Alert, Badge, Empty, PageHead } from "../../components/ui";
 import { api } from "../../lib/api";
-import { CHAR_STYLES, CharStyle, Environments, Handoff, STATUS_COLORS, seatLabel, toStatus } from "../../lib/office-scene";
+import { shownRows } from "../../lib/agents";
+import { CHAR_STYLES, CharStyle, Environments, Handoff, seatLabel } from "../../lib/office-scene";
+import { useOffice } from "../../lib/use-office";
 
 type Check = { role: string; responding: boolean; detail: string };
 type View = "office" | "table";
@@ -11,15 +15,17 @@ type Pending = { id: string; name: string; approvals: string[] };
 const NO_ENV: Environments = { qc: null, prod: null };
 
 export default function Status() {
-  const [rows, setRows] = useState<any[] | null>(null);
-  const [handoffs, setHandoffs] = useState<Handoff[]>([]);
-  const [env, setEnv] = useState<Environments>(NO_ENV);
-  const [pending, setPending] = useState<Pending[]>([]);
-  const [incidents, setIncidents] = useState(0);
+  const { data, err: feedErr, setData } = useOffice();
+  const rows: any[] | null = data ? data.team : null;
+  const handoffs: Handoff[] = data?.handoffs ?? [];
+  const env: Environments = data?.environments ?? NO_ENV;
+  const pending: Pending[] = data?.pending_prod ?? [];
+  const incidents: number = data?.open_incidents ?? 0;
+  const docs: { id: string; name: string; status: string }[] = data?.docs_gates ?? [];
+  const win = data?.usage_window ?? null;
   const [budget, setBudget] = useState<any>(null);
-  const [docs, setDocs] = useState<{ id: string; name: string; status: string }[]>([]);
-  const [win, setWin] = useState<any>(null);
-  const [err, setErr] = useState("");
+  const [actErr, setErr] = useState("");
+  const err = actErr || feedErr;
   const [checks, setChecks] = useState<Record<string, Check> | null>(null);
   const [checking, setChecking] = useState(false);
   const [view, setView] = useState<View>("office");
@@ -43,25 +49,9 @@ export default function Status() {
   }, []);
 
   useEffect(() => {
-    const load = () =>
-      api("/office")
-        .then((r) => {
-          setRows(r.team);
-          setHandoffs(r.handoffs);
-          setEnv(r.environments ?? NO_ENV);
-          setPending(r.pending_prod ?? []);
-          setIncidents(r.open_incidents ?? 0);
-          setDocs(r.docs_gates ?? []);
-          setWin(r.usage_window ?? null);
-          setErr("");
-        })
-        .catch((e) => setErr(e.message));
     api("/budget")
       .then(setBudget)
       .catch(() => {});
-    load();
-    const t = setInterval(load, 4000);
-    return () => clearInterval(t);
   }, []);
 
   async function runCheck() {
@@ -81,16 +71,15 @@ export default function Status() {
     setErr("");
     try {
       await api(`/pipeline/tasks/${id}/approve-prod`, "POST", { by: "human" });
-      const r = await api("/office");
-      setPending(r.pending_prod ?? []);
-      setEnv(r.environments ?? NO_ENV);
+      setData(await api("/office"));
     } catch (e: any) {
       setErr(e.message);
     }
   }
 
   const answered = checks ? Object.values(checks).filter((c) => c.responding).length : 0;
-  const sel = rows?.find((r) => r.role === selected);
+  const shown = shownRows(rows ?? [], checks);
+  const sel = shown.find((r) => r.role === selected);
   return (
     <>
       <PageHead title="Agents" sub="Your team at work. Click anyone for details." />
@@ -113,6 +102,11 @@ export default function Status() {
           </label>
         )}
         <span className="spacer" />
+        {view === "office" && (
+          <button className="secondary" onClick={() => window.open("/agents-window/", "agents-window", "popup,width=1280,height=820")} title="Open the office in its own window, for a second monitor.">
+            Detach
+          </button>
+        )}
         <button onClick={runCheck} disabled={checking || !rows?.length} title="Asks each model once whether it answers. Uses a little quota, so it only runs when you click.">
           {checking ? "Checking…" : "Check agents"}
         </button>
@@ -169,32 +163,39 @@ export default function Status() {
 
       {rows && rows.length > 0 && view === "office" && (
         <>
-          <Office team={rows} handoffs={handoffs} environments={env} paused={paused} look={look} onSelect={setSelected} />
+          <LiveStrip rows={shown} />
+          <div className="office-layout">
+          <div className="office-main">
+          <Office team={shown} handoffs={handoffs} environments={env} paused={paused} look={look} onSelect={setSelected} />
+          </div>
+          <div className="office-side">
           <div className="agent-chips" aria-label="Agent status">
-            {rows.map((r) => (
+            {shown.map((r) => (
               <button key={r.role} className="agent-chip" onClick={() => setSelected(r.role)} aria-pressed={selected === r.role}>
-                <i className="dot" style={{ background: STATUS_COLORS[toStatus(r.state)] }} />
-                {seatLabel(r.role)}
-                <small>{r.state}</small>
+                {seatLabel(r.role)} <AgentState state={r.state} />
+                {checks?.[r.role] && <small title={checks[r.role].detail}>{checks[r.role].responding ? "model answers" : "no answer"}</small>}
               </button>
             ))}
           </div>
-          <p className="muted caption">The office boy only walks when the app records a real hand-off. The receptionist and the cat are just for fun.</p>
+          <p className="muted caption">Colour = last run. “Model answers” = Check agents result.</p>
           <div className="card" aria-live="polite">
             {sel ? (
               <>
-                <strong>{seatLabel(sel.role)}</strong> <Badge status={sel.state} />
+                <strong>{seatLabel(sel.role)}</strong> <AgentState state={sel.state} />
                 <dl className="detail">
                   <dt>Role</dt><dd>{sel.description || "–"}</dd>
                   <dt>Task</dt><dd>{sel.task ?? "–"}</dd>
                   <dt>Model</dt><dd>{sel.model ?? "not set"}</dd>
                   <dt>Steps</dt><dd>{sel.steps}</dd>
+                  {sel.lastRun && (<><dt>Last run</dt><dd>failed, but the model answers now</dd></>)}
                 </dl>
               </>
             ) : (
               <span className="muted">Click a person, or a status button, to see its role, task and model.</span>
             )}
           </div>
+          </div>
+        </div>
         </>
       )}
 
@@ -221,7 +222,7 @@ export default function Status() {
                       <div className="muted" style={{ fontSize: "0.85rem" }}>{r.description}</div>
                     </td>
                     <td>{r.model ?? <Badge status="not set" tone="warn" />}</td>
-                    <td><Badge status={r.state} /></td>
+                    <td><AgentState state={r.state} /></td>
                     <td>{r.task ?? "–"}</td>
                     <td>{r.steps}</td>
                     <td>
