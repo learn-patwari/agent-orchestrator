@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Alert, Badge, Empty, PageHead } from "../../components/ui";
 import { api } from "../../lib/api";
+import { Block, parseMarkdown, srsApprovalItem } from "../../lib/markdown";
 
 const STEP: Record<string, string> = {
   questioning: "Answer the questions in the Inbox",
@@ -131,6 +132,73 @@ function FeatureSkills({ fid }: { fid: string }) {
   );
 }
 
+function Markdown({ text }: { text: string }) {
+  return (
+    <div className="md">
+      {parseMarkdown(text).map((b: Block, i) =>
+        b.type === "heading" ? (
+          <h4 key={i}>{b.text}</h4>
+        ) : b.type === "list" ? (
+          <ul key={i}>{b.items.map((t, j) => <li key={j}>{t}</li>)}</ul>
+        ) : b.type === "table" ? (
+          <div className="table-wrap" key={i}>
+            <table>
+              <thead><tr>{b.head.map((c, j) => <th key={j} scope="col">{c}</th>)}</tr></thead>
+              <tbody>{b.rows.map((r, j) => <tr key={j}>{r.map((c, k) => <td key={k}>{c}</td>)}</tr>)}</tbody>
+            </table>
+          </div>
+        ) : (
+          <p key={i}>{b.text}</p>
+        ),
+      )}
+    </div>
+  );
+}
+
+/** Approve or reject the SRS right where it is read, so the way forward is never hidden in another page. */
+function SrsDecision({ fid, onDone }: { fid: string; onDone: () => void }) {
+  const [item, setItem] = useState<any>(null);
+  const [state, setState] = useState<"loading" | "ready" | "none">("loading");
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    api("/inbox?status=open")
+      .then((items) => {
+        const it = srsApprovalItem(items, fid);
+        setItem(it ?? null);
+        setState(it ? "ready" : "none");
+      })
+      .catch((e) => {
+        setErr(e.message);
+        setState("none");
+      });
+  }, [fid]);
+  async function decide(approve: boolean) {
+    setErr("");
+    try {
+      await api(`/inbox/${item.id}/decide`, "POST", { approve });
+      onDone();
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+  if (state === "loading") return <p className="muted" role="status">Loading the approval…</p>;
+  return (
+    <div className="card" role="region" aria-label="SRS approval">
+      <strong>Your decision</strong>
+      <p className="muted">Approving lets the developers start on this feature. Read the SRS below first.</p>
+      {err && <Alert>{err}</Alert>}
+      {state === "ready" ? (
+        <div className="row">
+          <button onClick={() => decide(true)}>Approve SRS</button>
+          <button className="secondary" onClick={() => decide(false)}>Reject</button>
+        </div>
+      ) : (
+        <p className="muted">No open approval was found for this feature. Open the <Link href="/inbox">Inbox</Link> to check.</p>
+      )}
+    </div>
+  );
+}
+
 export default function Features() {
   const [list, setList] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false); // no empty message until the first answer arrives
@@ -214,6 +282,7 @@ export default function Features() {
             <strong>Next:</strong> {STEP[sel.status] ?? sel.status}{" "}
             {(sel.status === "questioning" || sel.status === "srs_draft") && <Link href="/inbox">Open inbox</Link>}
           </p>
+          {sel.status === "srs_draft" && <SrsDecision key={`d${sel.id}`} fid={sel.id} onDone={() => load(sel.id)} />}
           {sel.status !== "rejected" && <TokenLimit key={sel.id} fid={sel.id} />}
           {sel.status !== "rejected" && <FeatureSkills key={`s${sel.id}`} fid={sel.id} />}
           <h3>Understanding</h3>
@@ -261,7 +330,7 @@ export default function Features() {
           {srs && (
             <>
               <h3>SRS</h3>
-              <pre style={{ whiteSpace: "pre-wrap" }}>{srs}</pre>
+              <Markdown text={srs} />
             </>
           )}
         </div>
