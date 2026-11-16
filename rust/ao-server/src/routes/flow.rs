@@ -60,9 +60,16 @@ fn accept_default(_: &AppState, r: &Req) -> R {
     synced(Inbox::new(decide_with_defaults()?).accept_default(r.param("iid")).map_err(ierr)?)
 }
 
-fn decide(_: &AppState, r: &Req) -> R {
+fn decide(st: &AppState, r: &Req) -> R {
     let approve = boolean(r, "approve")?;
-    synced(Inbox::new(decide_with_defaults()?).decide(r.param("iid"), approve).map_err(ierr)?)
+    let item = Inbox::new(decide_with_defaults()?).decide(r.param("iid"), approve).map_err(ierr)?;
+    let out = synced(item.clone())?;
+    if approve && item["action"] == "srs_approval" {
+        if let Some(fid) = item["feature_id"].as_str().filter(|f| !f.is_empty()) {
+            super::team::continue_after_srs(st, fid);
+        }
+    }
+    Ok(out)
 }
 
 fn list_assumptions(_: &AppState, _: &Req) -> R {

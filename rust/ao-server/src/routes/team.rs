@@ -309,7 +309,39 @@ fn team_context(roles: &BTreeMap<String, Role>) -> Result<String, ApiError> {
 }
 
 fn chat(st: &AppState, r: &Req) -> R {
-    let text = r.field("text")?;
+    run_chat(st, &r.field("text")?)
+}
+
+/// After the human approves an SRS nobody else would tell the orchestrator, so the flow stopped there. This adds a
+/// note to the chat and lets the orchestrator carry on (brief the developers). It does nothing when no orchestrator
+/// model is set; a failure is written into the chat so the human can see why it did not continue.
+pub(crate) fn continue_after_srs(st: &AppState, feature_id: &str) {
+    let ready = role_models().ok().and_then(|m| m.get("orchestrator").cloned()).is_some_and(|m| m["provider_id"].is_string());
+    if !ready {
+        return;
+    }
+    let title = DocRepo::new("features").and_then(|r| r.get(feature_id)).ok().flatten().map(|f| s_of(&f["title"])).unwrap_or_default();
+    let text = format!("The human approved the SRS for feature '{title}' (feature_id {feature_id}). Continue the plan now: brief the developers (use this feature_id) and tell me briefly what you started.");
+    let st = st.clone();
+    let work = move || {
+        if let Err(e) = run_chat(&st, &text) {
+            if let Ok(m) = DocRepo::new("messages") {
+                let _ = m.create(json!({"chat": true, "role": "assistant", "content": format!("The SRS is approved, but I could not continue by myself: {}. Ask me to continue and I will try again.", e.detail), "at": now()}), None);
+            }
+        }
+    };
+    if std::env::var("AO_SYNC_RUNS").as_deref() == Ok("1") {
+        work();
+    } else {
+        std::thread::spawn(work);
+    }
+}
+
+fn s_of(v: &Value) -> String {
+    v.as_str().unwrap_or("").to_string()
+}
+
+fn run_chat(st: &AppState, text: &str) -> R {
     let mapping = role_models()?.get("orchestrator").cloned();
     let rec = match mapping.as_ref().and_then(|m| m["provider_id"].as_str()) {
         Some(pid) => DocRepo::new("providers")?.get(pid)?,
@@ -320,7 +352,7 @@ fn chat(st: &AppState, r: &Req) -> R {
     let provider = st.build_provider(&rec).map_err(|e| ApiError::new(400, e.to_string()))?;
     let body = roles.get("orchestrator").map_or("", |r| r.body.as_str()).to_string();
     let o = Orchestrator::new(provider, mapping["model"].as_str().unwrap_or(""), &body, rec["id"].as_str().unwrap_or(""), &team_context(&roles)?).roles(role_list(&roles)).delegator(Box::new(RunDelegator { st: st.clone(), roles }));
-    match o.chat(&text) {
+    match o.chat(text) {
         Ok(v) => ok(v),
         Err(OrchestratorError::Provider(e)) => bad(502, redact(&format!("{}: {}", e.kind.as_str(), e.message))),
         Err(OrchestratorError::Db(d)) => Err(d.into()),

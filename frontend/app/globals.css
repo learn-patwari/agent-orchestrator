@@ -190,3 +190,5 @@ dl.detail dt{color:var(--muted)}dl.detail dd{margin:0}
 .caption{font-size:.85rem;margin:8px 2px 0}
 .look{display:inline-flex;align-items:center;gap:6px;margin:0;font-weight:500}
 .look select{width:auto;padding:6px 10px}
+.waiting { display: grid; gap: 8px; margin: 10px 0; }
+.waiting-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }

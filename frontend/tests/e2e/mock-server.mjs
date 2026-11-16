@@ -17,6 +17,7 @@ const api = {
   "/api/features/f1": { id: "f1", title: "notification feature", status: "srs_draft", analysis: {}, qa: [], plan: null, srs_md: ["## 11. Sign-off", "| Item | Value |", "|---|---|", "| Approved by | |", "| Date | |"].join("\n") },
   "/api/features/f1/budget": { limit: null, used: 0, held: false },
   "/api/features/f1/skills": { available: [], selected: [] },
+  "/api/chat": [],
   "/api/inbox": [{ id: "i1", kind: "approval", action: "srs_approval", feature_id: "f1", status: "open", title: "Approve the SRS" }],
 };
 

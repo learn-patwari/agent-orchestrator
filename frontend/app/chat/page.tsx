@@ -4,6 +4,7 @@ import { Alert, PageHead } from "../../components/ui";
 import { api } from "../../lib/api";
 
 type Msg = { role: string; content: string };
+type Waiting = { id: string; kind: string; title: string; body?: string };
 
 export default function Chat() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -11,11 +12,35 @@ export default function Chat() {
   const [warn, setWarn] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [waiting, setWaiting] = useState<Waiting[]>([]);
   const end = useRef<HTMLDivElement>(null);
+  const sending = useRef(false);
 
+  // what is waiting for the human, and replies the orchestrator wrote by itself (for example after an approval)
+  async function refresh() {
+    try {
+      const [m, w] = await Promise.all([api<Msg[]>("/chat"), api<Waiting[]>("/inbox?status=open")]);
+      if (!sending.current) setMsgs(m);
+      setWaiting(w);
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
   useEffect(() => {
-    api<Msg[]>("/chat").then(setMsgs).catch((e) => setErr(e.message));
+    refresh();
+    const t = setInterval(refresh, 5000);
+    return () => clearInterval(t);
   }, []);
+
+  async function decide(id: string, approve: boolean) {
+    setErr("");
+    try {
+      await api(`/inbox/${id}/decide`, "POST", { approve });
+    } catch (e: any) {
+      setErr(e.message);
+    }
+    refresh();
+  }
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
   }, [msgs, busy]);
@@ -26,6 +51,7 @@ export default function Chat() {
     setErr("");
     setWarn("");
     setBusy(true);
+    sending.current = true;
     const sent = text;
     setMsgs((m) => [...m, { role: "user", content: sent }]);
     setText("");
@@ -38,9 +64,8 @@ export default function Chat() {
       setErr(e.message);
       setText(sent); // keep what you typed so you can retry
     } finally {
-      try {
-        setMsgs(await api<Msg[]>("/chat"));
-      } catch {}
+      sending.current = false;
+      await refresh();
       setBusy(false);
     }
   }
@@ -69,6 +94,25 @@ export default function Chat() {
         )}
         <div ref={end} />
       </div>
+      {waiting.length > 0 && (
+        <div className="card waiting" role="region" aria-label="Waiting for you">
+          <strong>Waiting for you ({waiting.length})</strong>
+          {waiting.slice(0, 3).map((w) => (
+            <div key={w.id} className="waiting-row">
+              <span>{w.title}</span>
+              {w.kind === "approval" ? (
+                <span className="row">
+                  <button type="button" onClick={() => decide(w.id, true)}>Approve</button>
+                  <button type="button" className="secondary" onClick={() => decide(w.id, false)}>Reject</button>
+                </span>
+              ) : (
+                <a href="/inbox/">Answer in Inbox</a>
+              )}
+            </div>
+          ))}
+          {waiting.length > 3 && <a href="/inbox/">See all in Inbox</a>}
+        </div>
+      )}
       {warn && <Alert kind="warn">{warn}</Alert>}
       {err && <Alert>{err}</Alert>}
       <form onSubmit={send} className="composer">
