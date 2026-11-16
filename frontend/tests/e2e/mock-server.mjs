@@ -18,6 +18,11 @@ const api = {
   "/api/features/f1/budget": { limit: null, used: 0, held: false },
   "/api/features/f1/skills": { available: [], selected: [] },
   "/api/chat": [],
+  "/api/attention": { count: 3, items: [
+    { id: "inbox:i1", kind: "approval", title: "Approve the SRS", detail: "", link: "/features/?id=f1", at: 3 },
+    { id: "inbox:i2", kind: "question", title: "Which database?", detail: "", link: "/inbox/", at: 2 },
+    { id: "run:r1", kind: "task_failed", title: "tester failed: Run tests", detail: "429", link: "/status/", at: 1 },
+  ] },
   "/api/inbox": [{ id: "i1", kind: "approval", action: "srs_approval", feature_id: "f1", status: "open", title: "Approve the SRS" }],
 };
 

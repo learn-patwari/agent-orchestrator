@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { Dot, useAttention } from "./Attention";
 
 const icon = (d: ReactNode) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -38,6 +39,7 @@ const GROUPS: { label: string; items: { href: string; name: string; icon: ReactN
 
 export default function Sidebar() {
   const path = usePathname() || "/";
+  const { counts } = useAttention();
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -57,6 +59,7 @@ export default function Sidebar() {
               <Link key={i.href} href={i.href} aria-current={(i.href === "/" ? path === "/" : path.startsWith(i.href)) ? "page" : undefined}>
                 {i.icon}
                 {i.name}
+                <Dot n={counts[i.href]} />
               </Link>
             ))}
           </div>

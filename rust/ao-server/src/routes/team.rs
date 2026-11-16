@@ -359,6 +359,18 @@ fn run_chat(st: &AppState, text: &str) -> R {
     }
 }
 
+fn attention_feed(_: &AppState, _: &Req) -> R {
+    let items = ao_core::attention::items()?;
+    ok(json!({"count": items.len(), "items": items}))
+}
+
+fn attention_seen(_: &AppState, r: &Req) -> R {
+    let Some(list) = r.body.get("ids").and_then(|v| v.as_array()) else { return Err(ApiError::new(422, "field required: ids")) };
+    let ids: Vec<String> = list.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+    ao_core::attention::mark_seen(&ids)?;
+    ok(json!({"ok": true}))
+}
+
 fn chat_history(_: &AppState, _: &Req) -> R {
     let rows: Vec<Value> = DocRepo::new("messages")?.list()?.iter().filter(|m| m["chat"].as_bool().unwrap_or(false) || m["chat"].as_i64().is_some_and(|n| n != 0)).map(|m| json!({"role": m["role"], "content": m["content"], "at": m["at"]})).collect();
     ok(Value::Array(rows))
@@ -421,6 +433,8 @@ pub fn mount(r: Routes) -> Routes {
         .guarded(Method::POST, "/api/team/check", team_check_endpoint)
         .guarded(Method::POST, "/api/chat", chat)
         .guarded(Method::GET, "/api/chat", chat_history)
+        .guarded(Method::GET, "/api/attention", attention_feed)
+        .guarded(Method::POST, "/api/attention/seen", attention_seen)
         .guarded(Method::GET, "/api/status", status)
         .guarded(Method::GET, "/api/notifications", notifications)
         .guarded(Method::POST, "/api/notifications/:nid/read", read_notification)

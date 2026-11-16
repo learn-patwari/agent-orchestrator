@@ -68,7 +68,7 @@ fn main() {
             let url: tauri::Url = format!("http://127.0.0.1:{port}/").parse()?;
             let handle = app.handle().clone();
             let opened = std::sync::atomic::AtomicUsize::new(0);
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
+            let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
                 .title("Agent Orchestrator")
                 .inner_size(1280.0, 860.0)
                 .maximized(true)
@@ -89,6 +89,20 @@ fn main() {
                     }
                 })
                 .build()?;
+            // the number of things waiting for you, shown on the taskbar icon
+            std::thread::spawn(move || {
+                let mut shown = usize::MAX;
+                loop {
+                    let n = ao_core::attention::count().unwrap_or(0);
+                    if n != shown {
+                        let icon = ao_desktop::badge_icon(n).map(|(px, w, h)| tauri::image::Image::new_owned(px, w, h));
+                        if main.set_overlay_icon(icon).is_ok() {
+                            shown = n;
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                }
+            });
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -99,6 +99,7 @@ dependencies = [
 name = "ao-desktop"
 version = "0.1.0"
 dependencies = [
+ "ao-core",
  "ao-server",
  "tauri",
  "tauri-build",

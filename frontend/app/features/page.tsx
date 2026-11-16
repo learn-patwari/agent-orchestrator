@@ -223,7 +223,7 @@ export default function Features() {
     }
   }
   useEffect(() => {
-    load();
+    load(new URLSearchParams(window.location.search).get("id") ?? undefined); // a link from the bell opens that feature
   }, []);
 
   async function run(fn: () => Promise<any>) {

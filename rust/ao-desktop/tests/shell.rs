@@ -78,3 +78,17 @@ fn installed_builtin_roles_and_plugins_are_found_beside_the_program() {
     assert_eq!(b, Some(t.path().join("builtin")));
     assert_eq!(p, Some(t.path().join("resources/plugins")));
 }
+
+#[test]
+fn the_taskbar_badge_is_a_red_disc_with_the_number() {
+    assert!(ao_desktop::badge_icon(0).is_none(), "nothing waiting, no badge");
+    let (px, w, h) = ao_desktop::badge_icon(3).unwrap();
+    assert_eq!((w, h, px.len()), (32, 32, 32 * 32 * 4));
+    let at = |x: usize, y: usize| &px[(y * 32 + x) * 4..(y * 32 + x) * 4 + 4];
+    assert_eq!(at(0, 0)[3], 0, "the corner is transparent");
+    assert_eq!(at(16, 2), &[217, 48, 37, 255], "the disc is red");
+    let white = px.chunks(4).filter(|p| p[0] == 255 && p[1] == 255 && p[2] == 255 && p[3] == 255).count();
+    assert!(white > 30, "the number is drawn in white, got {white} white pixels");
+    assert_ne!(ao_desktop::badge_icon(3).unwrap().0, ao_desktop::badge_icon(4).unwrap().0, "different numbers look different");
+    assert_eq!(ao_desktop::badge_icon(250).unwrap().0, ao_desktop::badge_icon(99).unwrap().0, "more than 99 shows 99");
+}

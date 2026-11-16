@@ -222,6 +222,24 @@ async fn rejecting_the_srs_or_having_no_orchestrator_model_does_not_wake_anyone(
 }
 
 #[tokio::test]
+async fn the_attention_feed_lists_what_waits_and_run_notices_can_be_dismissed() {
+    let e = env();
+    assert_eq!(e.c.get("/api/attention").await.0, 401);
+    let c = e.c.authed().await;
+    assert_eq!(c.get("/api/attention").await.1, json!({"count": 0, "items": []}));
+    ao_core::inbox::request_gate("merge_main", "Merge", None).unwrap();
+    let run = DocRepo::new("runs").unwrap().create(json!({"role": "tester", "task": "Run tests", "status": "done", "finished_at": ao_core::db::now()}), None).unwrap();
+    let feed = c.get("/api/attention").await.1;
+    assert_eq!(feed["count"], 2, "{feed}");
+    let ids: Vec<String> = feed["items"].as_array().unwrap().iter().map(|i| i["id"].as_str().unwrap().to_string()).collect();
+    let run_id = ids.iter().find(|i| i.starts_with("run:")).unwrap().clone();
+    assert_eq!(run_id, format!("run:{}", run["id"].as_str().unwrap()));
+    assert_eq!(c.post("/api/attention/seen", json!({"ids": [run_id]})).await.0, 200);
+    assert_eq!(c.get("/api/attention").await.1["count"], 1);
+    assert_eq!(c.post("/api/attention/seen", json!({})).await.0, 422);
+}
+
+#[tokio::test]
 async fn the_office_feed_is_empty_before_any_work_and_chat_needs_a_model() {
     let e = env();
     let c = e.c.authed().await;

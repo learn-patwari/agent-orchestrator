@@ -82,3 +82,55 @@ pub fn bundled_dirs(exe_dir: Option<&Path>) -> (Option<PathBuf>, Option<PathBuf>
     };
     (find("builtin", "roles"), find("plugins", "software-delivery"))
 }
+
+const DIGITS: [[u8; 7]; 10] = [
+    [0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110],
+    [0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110],
+    [0b01110, 0b10001, 0b00001, 0b00010, 0b00100, 0b01000, 0b11111],
+    [0b11110, 0b00001, 0b00001, 0b01110, 0b00001, 0b00001, 0b11110],
+    [0b00010, 0b00110, 0b01010, 0b10010, 0b11111, 0b00010, 0b00010],
+    [0b11111, 0b10000, 0b11110, 0b00001, 0b00001, 0b10001, 0b01110],
+    [0b00110, 0b01000, 0b10000, 0b11110, 0b10001, 0b10001, 0b01110],
+    [0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000],
+    [0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110],
+    [0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b00010, 0b01100],
+];
+
+/// The Windows taskbar badge for `waiting` items: a 32x32 red disc with the number in white (RGBA pixels).
+/// None when nothing waits. Numbers above 99 show 99.
+pub fn badge_icon(waiting: usize) -> Option<(Vec<u8>, u32, u32)> {
+    if waiting == 0 {
+        return None;
+    }
+    const N: usize = 32;
+    let mut px = vec![0u8; N * N * 4];
+    let mut put = |x: usize, y: usize, c: [u8; 4]| px[(y * N + x) * 4..(y * N + x) * 4 + 4].copy_from_slice(&c);
+    for y in 0..N {
+        for x in 0..N {
+            let (dx, dy) = (x as f32 + 0.5 - 16.0, y as f32 + 0.5 - 16.0);
+            if dx * dx + dy * dy <= 16.0 * 16.0 {
+                put(x, y, [217, 48, 37, 255]);
+            }
+        }
+    }
+    let text = waiting.min(99).to_string();
+    let scale = if text.len() == 1 { 3 } else { 2 };
+    let (gw, gh) = (5 * scale, 7 * scale);
+    let total = text.len() * gw + (text.len() - 1) * scale;
+    let (x0, y0) = ((N - total) / 2, (N - gh) / 2);
+    for (i, ch) in text.chars().enumerate() {
+        let glyph = DIGITS[ch.to_digit(10).unwrap() as usize];
+        for (row, bits) in glyph.iter().enumerate() {
+            for col in 0..5 {
+                if bits & (1 << (4 - col)) != 0 {
+                    for sy in 0..scale {
+                        for sx in 0..scale {
+                            put(x0 + i * (gw + scale) + col * scale + sx, y0 + row * scale + sy, [255, 255, 255, 255]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Some((px, N as u32, N as u32))
+}

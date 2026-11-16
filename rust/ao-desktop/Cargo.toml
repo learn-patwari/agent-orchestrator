@@ -16,6 +16,7 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+ao-core = { path = "../ao-core" }
 ao-server = { path = "../ao-server" }
 tauri = { version = "2", features = [] }
 tauri-plugin-single-instance = "2"
