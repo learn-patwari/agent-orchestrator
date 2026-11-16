@@ -5,6 +5,15 @@ use std::net::TcpStream;
 use std::path::Path;
 
 #[test]
+fn only_our_own_agents_page_may_open_in_a_new_window() {
+    let ok = |u: &str| ao_desktop::is_detach_url(&u.parse().unwrap());
+    assert!(ok("http://127.0.0.1:8765/agents-window/"));
+    assert!(ok("http://localhost:8765/agents-window"));
+    assert!(!ok("http://127.0.0.1:8765/settings/"));
+    assert!(!ok("https://example.com/agents-window/"));
+}
+
+#[test]
 fn data_lives_where_the_electron_app_kept_it() {
     assert_eq!(data_dir(Some(Path::new("C:/Users/x/AppData/Roaming")), None), Path::new("C:/Users/x/AppData/Roaming/agent-orchestrator-desktop/data"));
     assert_eq!(data_dir(Some(Path::new("C:/a")), Some("D:/mine")), Path::new("D:/mine")); // AO_DATA_DIR wins
