@@ -355,6 +355,46 @@ fn cli_tool_call_reply_is_parsed_from_fenced_json() {
 }
 
 #[test]
+fn cli_xml_style_tool_calls_are_understood_too() {
+    // the model sometimes writes its native <invoke> format instead of the JSON we asked for; it must still run, not show up as chat text
+    let reply = "<invoke name=\"read_file\">
+<parameter name=\"path\">a.txt</parameter>
+</invoke>
+<invoke name=\"read_file\">
+<parameter name=\"path\">b.txt</parameter>
+</invoke>";
+    let (r, _) = fake(reply, 0, "", false);
+    let c = run(&cli(r), &[user("go")], Some(&[tool()])).unwrap();
+    assert_eq!(c.tool_calls.len(), 2);
+    assert_eq!((c.tool_calls[0].name.as_str(), &c.tool_calls[0].arguments), ("read_file", &json!({"path": "a.txt"})));
+    assert_eq!(c.tool_calls[1].arguments, json!({"path": "b.txt"}));
+    assert!(c.text.is_empty(), "the call markup is not chat text: {:?}", c.text);
+    assert_eq!(c.stop_reason, "tool_use");
+}
+
+#[test]
+fn cli_xml_parameters_that_are_json_keep_their_type_and_unknown_tools_are_dropped() {
+    let reply = "Starting.
+<function_calls>
+<invoke name=\"read_file\">
+<parameter name=\"path\">a.txt</parameter>
+<parameter name=\"done_criteria\">[\"x\", \"y\"]</parameter>
+</invoke>
+<invoke name=\"rm_rf\">
+</invoke>
+</function_calls>";
+    let (r, _) = fake(reply, 0, "", false);
+    let c = run(&cli(r), &[user("go")], Some(&[tool()])).unwrap();
+    assert_eq!(c.tool_calls.len(), 1);
+    assert_eq!(c.tool_calls[0].arguments, json!({"path": "a.txt", "done_criteria": ["x", "y"]}));
+    assert_eq!(c.text, "Starting.");
+    // without tools offered it stays plain text
+    let (r, _) = fake(reply, 0, "", false);
+    let c = run(&cli(r), &[user("go")], None).unwrap();
+    assert!(c.tool_calls.is_empty() && c.text.contains("invoke"));
+}
+
+#[test]
 fn cli_unknown_tools_are_ignored_and_json_without_tools_stays_text() {
     let (r, _) = fake("{\"tool_calls\": [{\"name\": \"rm_rf\", \"arguments\": {}}]}", 0, "", false);
     assert!(run(&cli(r), &[user("go")], Some(&[tool()])).unwrap().tool_calls.is_empty());

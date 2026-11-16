@@ -247,10 +247,12 @@ impl Orchestrator {
                 } else if tc.name == "delegate" && started >= MAX_DELEGATIONS {
                     wrap_untrusted(&tc.name, &format!("ERROR: limit reached, at most {MAX_DELEGATIONS} agents are started per message. Say which work is still waiting; the human can ask again."))
                 } else {
-                    if tc.name == "delegate" {
+                    let out = self.tool(d, &tc.name, &tc.arguments);
+                    // only a run that really started counts toward the limit: a refusal (the SRS gate, no model) costs nothing
+                    if tc.name == "delegate" && !out.contains("ERROR:") {
                         started += 1;
                     }
-                    self.tool(d, &tc.name, &tc.arguments)
+                    out
                 };
                 convo.push(Message::tool(&out, &tc.id));
             }
