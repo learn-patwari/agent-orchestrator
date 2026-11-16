@@ -543,12 +543,17 @@ fn call(name: &str, args: Value) -> ToolCall {
 struct FakeDelegator {
     started: Mutex<Vec<Value>>,
     fail: Option<String>,
+    /// roles the platform refuses (the SRS gate for developers, say)
+    refuse_roles: Vec<String>,
 }
 
 impl Delegator for FakeDelegator {
     fn delegate(&self, role: &str, task: &str, area: &str, done: &[String], context: &str, feature_id: Option<&str>, task_id: Option<&str>) -> Result<Value, DelegationError> {
         if let Some(f) = &self.fail {
             return Err(DelegationError(f.clone()));
+        }
+        if self.refuse_roles.iter().any(|r| r == role) {
+            return Err(DelegationError(format!("{role} needs an approved SRS")));
         }
         self.started.lock().unwrap().push(json!({"role": role, "task": task, "area": area, "done": done, "context": context, "feature_id": feature_id, "task_id": task_id}));
         Ok(json!({"run_id": "r1", "role": role, "status": "running"}))
@@ -633,6 +638,19 @@ fn a_refused_delegation_is_fed_back_to_the_model_not_raised() {
         let out = with_delegator(&p, &d).chat("build it").unwrap();
         let m = &tool_msgs(&p, 1)[0];
         assert!(m.content.contains("ERROR") && m.content.contains("SRS not approved") && s(&out["reply"]).contains("SRS"));
+    });
+}
+
+#[test]
+fn a_refused_delegation_does_not_use_up_the_three_agent_limit() {
+    with_env(|_| {
+        let brief = |role: &str| call("delegate", json!({"role": role, "task": "greet", "area": "a", "done_criteria": ["said hi"]}));
+        let calls: Vec<ToolCall> = ["developer_1", "developer_2", "architect", "production_support", "tester"].iter().map(|r| brief(r)).collect();
+        let p = Script::new(vec![("", calls), ("done", vec![])]);
+        let d = Arc::new(FakeDelegator { refuse_roles: vec!["developer_1".into(), "developer_2".into()], ..Default::default() });
+        with_delegator(&p, &d).chat("greet everyone").unwrap();
+        let started: Vec<String> = d.started.lock().unwrap().iter().map(|v| s(&v["role"]).to_string()).collect();
+        assert_eq!(started, ["architect", "production_support", "tester"], "only started agents count toward the limit of three");
     });
 }
 

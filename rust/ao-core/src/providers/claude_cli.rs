@@ -16,6 +16,9 @@ pub const TOOL_RULES: &str = concat!(
 );
 pub const REMINDER: &str = "\n\n[Reminder] Reply with the JSON tool_calls object if you need a listed tool; no native tools exist.";
 
+static INVOKE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?s)<invoke\s+name="([^"]+)"\s*>(.*?)</invoke>"#).expect("valid pattern"));
+static PARAM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?s)<parameter\s+name="([^"]+)"\s*>(.*?)</parameter>"#).expect("valid pattern"));
+static WRAPPER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"</?function_calls>").expect("valid pattern"));
 static FENCE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)```(?:json)?\s*(\{.*?\})\s*```").expect("valid pattern"));
 
 pub use crate::proc::RunError;
@@ -127,7 +130,39 @@ impl ClaudeCliProvider {
         ClaudeCliProvider { exe, run: runner.unwrap_or_else(|| Arc::new(default_runner)), timeout: 300.0 }
     }
 
+    /// Tool calls from a reply: the JSON form we ask for, else the `<invoke>` markup the model sometimes writes instead.
     fn extract_calls(text: &str, allowed: &[&str]) -> (String, Vec<ToolCall>) {
+        let (rest, calls) = Self::extract_json(text, allowed);
+        if calls.is_empty() {
+            Self::extract_markup(text, allowed)
+        } else {
+            (rest, calls)
+        }
+    }
+
+    /// `<invoke name="tool"><parameter name="k">value</parameter></invoke>`: a value that is valid JSON keeps its type, anything else is text.
+    fn extract_markup(text: &str, allowed: &[&str]) -> (String, Vec<ToolCall>) {
+        let calls: Vec<ToolCall> = INVOKE
+            .captures_iter(text)
+            .filter(|c| allowed.contains(&&c[1]))
+            .map(|c| {
+                let args: serde_json::Map<String, Value> = PARAM
+                    .captures_iter(&c[2])
+                    .map(|p| {
+                        let raw = p[2].trim();
+                        (p[1].to_string(), serde_json::from_str(raw).unwrap_or_else(|_| Value::String(raw.to_string())))
+                    })
+                    .collect();
+                ToolCall::new(&format!("call_{}", &uuid::Uuid::new_v4().simple().to_string()[..12]), &c[1], Value::Object(args))
+            })
+            .collect();
+        if calls.is_empty() {
+            return (text.to_string(), vec![]);
+        }
+        (WRAPPER.replace_all(&INVOKE.replace_all(text, ""), "").trim().to_string(), calls)
+    }
+
+    fn extract_json(text: &str, allowed: &[&str]) -> (String, Vec<ToolCall>) {
         let m = FENCE.captures(text);
         let blob = m.as_ref().map(|c| c[1].to_string()).unwrap_or_else(|| text.trim().to_string());
         let Ok(obj) = serde_json::from_str::<Value>(&blob) else { return (text.to_string(), vec![]) };
