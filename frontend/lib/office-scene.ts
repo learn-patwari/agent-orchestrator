@@ -368,14 +368,19 @@ export class OfficeScene {
     // monitor
     this.box(x + 16, y - 9, 11, 9, 1.8, "#323a4d", 0.9); this.box(x + 20, y - 0.6, 3, 2, 0.6, "#323a4d", 0.6);
     const sx = x + 17.3, sy = y - 7.7, sw = 8.4, sh = 6.4;
-    this.box(sx, sy, sw, sh, 1, p.state === "running" ? "#0d3b2e" : p.state === "done" ? "#3b82f6" : p.state === "failed" ? "#f25f5c" : "#566078", 0);
+    this.box(sx, sy, sw, sh, 1, p.state === "running" ? "#0d3b2e" : p.state === "done" ? "#3b82f6" : p.state === "failed" ? "#f25f5c" : "#3c4d6e", 0);
     const c = this.ctx;
     if (p.state === "running") {
       c.fillStyle = "#69db7c"; for (let i = 0; i < 3; i++) { const w = 2.4 + ((Math.floor(t * 3) + i * 2) % 4); c.fillRect(sx + 1, sy + 1 + i * 1.8, w, 0.9); }
       for (let i = 0; i < 3; i++) { const k = (t * 1.1 + i / 3) % 1; this.ball(x + 21 + Math.sin(k * 6 + i) * 2, y - 11 - k * 9, 0.8, 0.8, `rgba(56,217,169,${(1 - k).toFixed(2)})`, 0); }
     } else if (p.state === "done") this.text("✓", sx + sw / 2, sy + sh / 2 + 0.2, 5.6, "#fff", "center");
     else if (p.state === "failed") this.text("!", sx + sw / 2, sy + sh / 2 + 0.2, 5.6, "#fff", "center");
-    else { c.fillStyle = "rgba(255,255,255,.35)"; c.fillRect(sx + 1.2, sy + 1.2, 3, 0.8); }
+    else {
+      // standby: a screen that is on and waiting, not a dead one ("zz" that breathes, plus a blinking cursor)
+      const a = 0.55 + 0.35 * Math.sin(t * 1.6 + p.phase);
+      this.text("zz", sx + sw / 2, sy + sh / 2 - 0.2, 4.2, `rgba(255,255,255,${a.toFixed(2)})`, "center");
+      if (Math.floor(t * 1.4 + p.phase) % 2 === 0) { c.fillStyle = "rgba(255,255,255,.7)"; c.fillRect(sx + 1.2, sy + sh - 1.6, 1.8, 0.6); }
+    }
   }
   private drawPerson(p: Person, t: number, seated: boolean) {
     const c = this.ctx, x = p.x, y = p.y, ph = t * 12 + p.phase, walk = p.moving;
