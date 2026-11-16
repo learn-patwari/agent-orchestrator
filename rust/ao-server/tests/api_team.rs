@@ -170,6 +170,57 @@ async fn the_office_feed_lists_the_team_and_every_hand_off() {
     assert!(history.as_array().unwrap().iter().any(|m| m["role"] == "user" && m["content"] == "go"), "{history}");
 }
 
+async fn feature_waiting_for_the_srs_decision(c: &Client) -> (String, String) {
+    let fid = DocRepo::new("features").unwrap().create(json!({"title": "notification feature", "status": "srs_draft"}), None).unwrap()["id"].as_str().unwrap().to_string();
+    let gate = ao_core::inbox::request_gate("srs_approval", "Approve the SRS", None).unwrap();
+    let gid = gate["id"].as_str().unwrap().to_string();
+    DocRepo::new("inbox").unwrap().update(&gid, json!({"feature_id": fid})).unwrap();
+    let _ = c;
+    (fid, gid)
+}
+
+#[tokio::test]
+async fn approving_the_srs_wakes_the_orchestrator_so_the_flow_goes_on_by_itself() {
+    let e = env();
+    std::env::set_var("AO_SYNC_RUNS", "1");
+    let c = e.c.authed().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let pid = setup_roles(c, tmp.path()).await;
+    c.put("/api/role-models/orchestrator", json!({"provider_id": pid, "model": "m"})).await;
+    let (fid, gid) = feature_waiting_for_the_srs_decision(c).await;
+    reply(&e, "SRS approved, briefing the developers now.");
+    let (st, _) = c.post(&format!("/api/inbox/{gid}/decide"), json!({"approve": true})).await;
+    std::env::remove_var("AO_SYNC_RUNS");
+    assert_eq!(st, 200);
+    assert_eq!(c.get(&format!("/api/features/{fid}")).await.1["status"], "approved");
+    let history = c.get("/api/chat").await.1;
+    let rows = history.as_array().unwrap();
+    assert!(rows.iter().any(|m| m["role"] == "user" && m["content"].as_str().unwrap().contains("approved the SRS") && m["content"].as_str().unwrap().contains(&fid)), "{history}");
+    assert!(rows.iter().any(|m| m["role"] == "assistant" && m["content"] == "SRS approved, briefing the developers now."), "{history}");
+}
+
+#[tokio::test]
+async fn rejecting_the_srs_or_having_no_orchestrator_model_does_not_wake_anyone() {
+    let e = env();
+    std::env::set_var("AO_SYNC_RUNS", "1");
+    let c = e.c.authed().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let pid = setup_roles(c, tmp.path()).await;
+    // no orchestrator model yet: approving still works and says nothing in the chat
+    let (fid, gid) = feature_waiting_for_the_srs_decision(c).await;
+    assert_eq!(c.post(&format!("/api/inbox/{gid}/decide"), json!({"approve": true})).await.0, 200);
+    assert_eq!(c.get(&format!("/api/features/{fid}")).await.1["status"], "approved");
+    assert_eq!(c.get("/api/chat").await.1, json!([]));
+    // a model, but the human rejects: nothing to continue
+    c.put("/api/role-models/orchestrator", json!({"provider_id": pid, "model": "m"})).await;
+    let (fid2, gid2) = feature_waiting_for_the_srs_decision(c).await;
+    reply(&e, "should not be asked");
+    assert_eq!(c.post(&format!("/api/inbox/{gid2}/decide"), json!({"approve": false})).await.0, 200);
+    std::env::remove_var("AO_SYNC_RUNS");
+    assert_eq!(c.get(&format!("/api/features/{fid2}")).await.1["status"], "rejected");
+    assert_eq!(c.get("/api/chat").await.1, json!([]));
+}
+
 #[tokio::test]
 async fn the_office_feed_is_empty_before_any_work_and_chat_needs_a_model() {
     let e = env();
