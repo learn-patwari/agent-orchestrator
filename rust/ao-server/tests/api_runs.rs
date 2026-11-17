@@ -111,3 +111,25 @@ async fn a_held_feature_blocks_new_runs_and_resume_clears_it() {
     assert_eq!(s.1["held"], false);
     assert_eq!(c.act("/api/features/ghost/resume").await.0, 404);
 }
+
+#[tokio::test]
+async fn a_feature_with_its_own_model_runs_on_it_and_others_keep_the_role_default() {
+    let e = env();
+    let c = e.c.authed().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let pid = setup_role(c, tmp.path()).await;
+    c.put("/api/role-models/developer", json!({"provider_id": pid, "model": "role-default"})).await;
+    let (own, plain) = (approved_fid(), approved_fid());
+    c.put(&format!("/api/features/{own}/setup"), json!({"model": {"provider_id": pid, "model": "feature-model"}})).await;
+    let seen: Arc<Mutex<Vec<String>>> = Default::default();
+    let s2 = seen.clone();
+    e.c.upstream.set(move |req| {
+        s2.lock().unwrap().push(req.body["model"].as_str().unwrap_or("").to_string());
+        completion("done", None)
+    });
+    for fid in [&own, &plain] {
+        let (st, out) = c.post("/api/runs", json!({"role": "developer", "task": "t", "workspace": tmp.path().to_string_lossy(), "wait": true, "feature_id": fid})).await;
+        assert_eq!(st, 200, "{out}");
+    }
+    assert_eq!(*seen.lock().unwrap(), ["feature-model", "role-default"]);
+}

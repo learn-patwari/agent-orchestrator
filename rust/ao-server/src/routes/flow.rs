@@ -99,11 +99,17 @@ fn list_of(r: &Req, k: &str) -> Vec<Value> {
 }
 
 fn flow() -> Result<Flow, ApiError> {
+    flow_for(None)
+}
+
+/// The flow of a feature's own folder, or of the one in Settings when the feature has none.
+fn flow_for(fid: Option<&str>) -> Result<Flow, ApiError> {
     let st = settings()?;
-    let repo = st["repo_path"].as_str().unwrap_or("");
-    if repo.is_empty() {
+    let Some(repo) = super::feature_repo(fid) else {
         return Err(ApiError::new(400, "set repo_path in settings first"));
-    }
+    };
+    let repo = repo.to_string_lossy().into_owned();
+    let repo = repo.as_str();
     let root = match st["worktree_root"].as_str().filter(|s| !s.is_empty()) {
         Some(r) => std::path::PathBuf::from(r),
         None => ao_core::config::data_dir().join("worktrees"),
@@ -126,19 +132,19 @@ fn list_tasks(_: &AppState, _: &Req) -> R {
 fn start_task(_: &AppState, r: &Req) -> R {
     let (fid, name) = (r.field("feature_id")?, r.field("name")?);
     let owner = r.opt_str("owner").unwrap_or_else(|| "developer_1".into());
-    ok(flow()?.start(&fid, &name, r.opt_str("stacked_on").as_deref(), &owner).map_err(flow_err)?)
+    ok(flow_for(Some(&fid))?.start(&fid, &name, r.opt_str("stacked_on").as_deref(), &owner).map_err(flow_err)?)
 }
 
 fn dev_done(_: &AppState, r: &Req) -> R {
-    ok(flow()?.dev_done(r.param("tid"), int(r, "pr_number")?, &r.field("head_sha")?).map_err(flow_err)?)
+    ok(flow_for(task_feature(r.param("tid")).as_deref())?.dev_done(r.param("tid"), int(r, "pr_number")?, &r.field("head_sha")?).map_err(flow_err)?)
 }
 
 fn record_tests(_: &AppState, r: &Req) -> R {
-    ok(flow()?.record_tests(r.param("tid"), int(r, "passed")?, int(r, "failed")?, &r.field("area")?).map_err(flow_err)?)
+    ok(flow_for(task_feature(r.param("tid")).as_deref())?.record_tests(r.param("tid"), int(r, "passed")?, int(r, "failed")?, &r.field("area")?).map_err(flow_err)?)
 }
 
 fn record_review(_: &AppState, r: &Req) -> R {
-    ok(flow()?.record_review(r.param("tid"), &r.field("body")?).map_err(flow_err)?)
+    ok(flow_for(task_feature(r.param("tid")).as_deref())?.record_review(r.param("tid"), &r.field("body")?).map_err(flow_err)?)
 }
 
 fn architect(_: &AppState, r: &Req) -> R {
@@ -151,6 +157,10 @@ fn deploy_qc(_: &AppState, r: &Req) -> R {
 
 fn qc(_: &AppState, r: &Req) -> R {
     ok(Release.qc_result(r.param("tid"), int(r, "passed")?, int(r, "failed")?).map_err(flow_err)?)
+}
+
+fn task_feature(tid: &str) -> Option<String> {
+    tasks().ok()?.get(tid).ok()??["feature_id"].as_str().map(String::from)
 }
 
 fn known_task(tid: &str) -> Result<(), ApiError> {

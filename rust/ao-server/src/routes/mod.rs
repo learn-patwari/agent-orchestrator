@@ -2,6 +2,8 @@
 mod core;
 pub(crate) use core::ping_provider;
 mod extras;
+mod feature_setup;
+pub(crate) use feature_setup::feature_repo;
 mod flow;
 mod runs;
 mod team;
@@ -12,7 +14,7 @@ use serde_json::Value;
 use std::path::PathBuf;
 
 pub fn all() -> Routes {
-    team::mount(flow::mount(runs::mount(extras::mount(core::mount(Routes::new())))))
+    team::mount(flow::mount(runs::mount(feature_setup::mount(extras::mount(core::mount(Routes::new()))))))
 }
 
 pub(crate) fn settings() -> Result<Value, ApiError> {

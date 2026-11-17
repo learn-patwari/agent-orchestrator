@@ -62,7 +62,11 @@ fn skill_names(feature_id: Option<&str>, task_id: Option<&str>) -> Result<Vec<St
 }
 
 pub fn make_runner(st: &AppState, role: &Role, ws: &Path, feature_id: Option<&str>, task_id: Option<&str>) -> Result<Runner, LaunchError> {
-    let mapping = kv_get("role_models", json!({}))?[role.name.as_str()].clone();
+    let mut mapping = kv_get("role_models", json!({}))?[role.name.as_str()].clone();
+    // a feature may carry its own model; it then replaces the role's for every run of that feature
+    if let Some(own) = feature_id.and_then(|f| DocRepo::new("features").ok()?.get(f).ok()?).map(|f| f["model"].clone()).filter(|m| m["model"].as_str().is_some_and(|s| !s.is_empty())) {
+        mapping = own;
+    }
     if mapping.is_null() {
         return fail(400, format!("no model configured for role {}", role.name));
     }
@@ -76,7 +80,7 @@ pub fn make_runner(st: &AppState, role: &Role, ws: &Path, feature_id: Option<&st
     let names = skill_names(feature_id, task_id)?;
     let reg = skill_registry()?;
     let preload = reg.estimate(&names.iter().map(|s| s.as_str()).collect::<Vec<_>>()).bodies;
-    let mut tb = ToolBox::new(Workspace::new(ws), Some(skill_registry()?)).role(&role.name).incidents(IncidentTool::new(&role.name).into_hook()).mcp(Box::new(RoleMcp::new(&role.name)));
+    let mut tb = ToolBox::new(Workspace::new(ws), Some(skill_registry()?)).role(&role.name).graph_repo(crate::routes::feature_repo(feature_id)).incidents(IncidentTool::new(&role.name).into_hook()).mcp(Box::new(RoleMcp::new(&role.name)));
     if let Some(flow) = agent_flow()? {
         tb = tb.pipeline(PipelineTool::new(&role.name, Some(flow)).into_hook());
     }

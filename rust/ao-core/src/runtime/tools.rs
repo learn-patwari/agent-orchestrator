@@ -257,6 +257,7 @@ pub struct ToolBox {
     mcp: Option<Box<dyn McpTools>>,
     specs: Vec<(&'static str, ToolSpec)>,
     role: String,
+    graph_repo: Option<PathBuf>,
 }
 
 fn spec(name: &str, description: &str, properties: Value, required: &[&str]) -> ToolSpec {
@@ -311,7 +312,13 @@ fn specs() -> Vec<(&'static str, ToolSpec)> {
 
 impl ToolBox {
     pub fn new(ws: Workspace, skills: Option<SkillRegistry>) -> Self {
-        ToolBox { ws, skills, shell_timeout: 120, pipeline: None, incidents: None, mcp: None, specs: specs(), role: String::new() }
+        ToolBox { ws, skills, shell_timeout: 120, pipeline: None, incidents: None, mcp: None, specs: specs(), role: String::new(), graph_repo: None }
+    }
+
+    /// The folder whose knowledge graph the `graph` tool reads (a feature's own), instead of the one in Settings.
+    pub fn graph_repo(mut self, repo: Option<PathBuf>) -> Self {
+        self.graph_repo = repo;
+        self
     }
 
     /// Who this box belongs to: the sender of `tell` and the reader of `state` inbox.
@@ -433,9 +440,10 @@ impl ToolBox {
         if action == "outline" && self.ws.denied(query) {
             return err(format!("{query} is on the never-stage/secret list"));
         }
-        let repo = crate::settings::get_settings()
-            .ok()
-            .and_then(|s| s["repo_path"].as_str().map(PathBuf::from))
+        let repo = self
+            .graph_repo
+            .clone()
+            .or_else(|| crate::settings::get_settings().ok().and_then(|s| s["repo_path"].as_str().map(PathBuf::from)))
             .filter(|p| !p.as_os_str().is_empty() && p.is_dir())
             .unwrap_or_else(|| root.clone());
         let g = crate::graph::ensure(&repo, false);
