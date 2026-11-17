@@ -164,22 +164,35 @@ impl ClaudeCliProvider {
         (WRAPPER.replace_all(&INVOKE.replace_all(text, ""), "").trim().to_string(), calls)
     }
 
-    /// The reply without a `{"tool_calls": [...]}` object (bare or in a code fence), when it has one.
+    /// The `{"tool_calls": [...]}` object in a reply, wherever it sits (code fence, whole reply, or after a sentence),
+    /// and the reply without it.
+    fn tool_blob(text: &str) -> Option<(Value, String)> {
+        let is_calls = |v: &Value| v.get("tool_calls").is_some_and(|c| c.is_array());
+        if let Some(c) = FENCE.captures(text) {
+            if let Some(v) = serde_json::from_str::<Value>(c[1].trim()).ok().filter(is_calls) {
+                return Some((v, text.replace(&c[0], "").trim().to_string()));
+            }
+        }
+        static START: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"\{\s*"tool_calls"\s*:"#).expect("valid pattern"));
+        for m in START.find_iter(text) {
+            let mut it = serde_json::Deserializer::from_str(&text[m.start()..]).into_iter::<Value>();
+            if let Some(Ok(v)) = it.next() {
+                if is_calls(&v) {
+                    let end = m.start() + it.byte_offset();
+                    return Some((v, format!("{}{}", &text[..m.start()], &text[end..]).trim().to_string()));
+                }
+            }
+        }
+        None
+    }
+
+    /// The reply without a tool-call object, when it has one: such a call is internal and never shown.
     fn without_tool_json(text: &str) -> String {
-        let is_calls = |s: &str| serde_json::from_str::<Value>(s.trim()).ok().is_some_and(|v| v.get("tool_calls").is_some_and(|c| c.is_array()));
-        if is_calls(text) {
-            return String::new();
-        }
-        match FENCE.captures(text) {
-            Some(c) if is_calls(&c[1]) => text.replace(&c[0], "").trim().to_string(),
-            _ => text.to_string(),
-        }
+        Self::tool_blob(text).map(|(_, rest)| rest).unwrap_or_else(|| text.to_string())
     }
 
     fn extract_json(text: &str, allowed: &[&str]) -> (String, Vec<ToolCall>) {
-        let m = FENCE.captures(text);
-        let blob = m.as_ref().map(|c| c[1].to_string()).unwrap_or_else(|| text.trim().to_string());
-        let Ok(obj) = serde_json::from_str::<Value>(&blob) else { return (text.to_string(), vec![]) };
+        let Some((obj, rest)) = Self::tool_blob(text) else { return (text.to_string(), vec![]) };
         let Some(raw) = obj.get("tool_calls").and_then(|v| v.as_array()) else { return (text.to_string(), vec![]) };
         let calls: Vec<ToolCall> = raw
             .iter()
@@ -198,7 +211,6 @@ impl ClaudeCliProvider {
         if calls.is_empty() {
             return (text.to_string(), vec![]);
         }
-        let rest = m.map(|c| text.replace(&c[0], "")).unwrap_or_default().trim().to_string();
         (rest, calls)
     }
 }

@@ -455,6 +455,21 @@ fn cli_system_prompt_gets_the_tool_rules_and_tool_descriptions() {
 }
 
 #[test]
+fn cli_tool_call_object_after_a_sentence_is_still_a_tool_call() {
+    // seen in a real run: the model writes a sentence and then the JSON, unfenced
+    let reply = "I'll check the shared state first.\n\n{\"tool_calls\": [{\"name\": \"read_file\", \"arguments\": {\"path\": \"a.txt\"}}]}";
+    let (r, _) = fake(reply, 0, "", false);
+    let c = run(&cli(r), &[user("go")], Some(&[tool()])).unwrap();
+    assert_eq!(c.tool_calls.len(), 1, "text was: {}", c.text);
+    assert_eq!(c.tool_calls[0].name, "read_file");
+    assert_eq!(c.text, "I'll check the shared state first.");
+    // and when the tool is not offered the JSON is still not shown
+    let (r, _) = fake(reply, 0, "", false);
+    let c = run(&cli(r), &[user("go")], None).unwrap();
+    assert!(c.tool_calls.is_empty() && !c.text.contains("tool_calls"), "text was: {}", c.text);
+}
+
+#[test]
 fn cli_ignores_the_users_own_mcp_servers_and_commands_so_each_call_stays_small() {
     // with the user's own setup loaded, one 10 KB call was billed ~218,000 tokens (measured); without it ~4,000
     let (r, calls) = fake("x", 0, "", false);
