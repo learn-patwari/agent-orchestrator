@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { FeatureSetup, FeatureSkills } from "../../components/FeatureParts";
+import { FeatureActivity, FeatureSetup, FeatureSkills } from "../../components/FeatureParts";
 import { Alert, Badge, Empty, PageHead } from "../../components/ui";
 import { api } from "../../lib/api";
 import { Block, srsApprovalItem } from "../../lib/markdown";
@@ -311,6 +311,7 @@ export default function Features() {
               <p>
                 <strong>Next:</strong> {sel.status === "approved" ? "Approved: development can start." : "Development starts after the SRS is approved."}
               </p>
+              <FeatureActivity key={`a${sel.id}`} fid={sel.id} title={sel.title} approved={sel.status === "approved"} />
               {sel.plan ? (
                 <>
                   <h3>Plan (lanes run in parallel; same lane = stacked)</h3>

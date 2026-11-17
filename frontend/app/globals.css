@@ -193,10 +193,13 @@ dl.detail dt{color:var(--muted)}dl.detail dd{margin:0}
 .waiting { display: grid; gap: 8px; margin: 10px 0; }
 .waiting-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
 .attn-dot { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #d93025; color: #fff; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
-.attn { position: fixed; top: 6px; right: 16px; z-index: 20; }
+.attn { position: relative; margin-left: 4px; }
 .attn-btn { display: inline-flex; gap: 8px; align-items: center; }
 .attn-btn .attn-dot { margin-left: 0; }
-.attn-list { position: absolute; right: 0; top: 100%; z-index: 20; width: min(420px, 92vw); display: grid; gap: 6px; max-height: 60vh; overflow: auto; }
+.attn-list { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; width: min(360px, 92vw); display: grid; gap: 4px; max-height: min(420px, 60vh); overflow: auto; margin: 0; padding: 10px; }
+.attn-head { padding: 2px 8px; }
+.clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.activity ul { padding-left: 18px; }
 .attn-row { display: grid; gap: 2px; padding: 8px; border-radius: 8px; text-decoration: none; color: inherit; }
 .attn-row:hover { background: var(--surface-2); }
 

@@ -30,3 +30,13 @@ test("a feature page walks through steps, shows a skill's description once it is
   await page.getByRole("button", { name: "Expand all" }).click();
   await expect(page.getByRole("cell", { name: "Approved by" })).toBeVisible();
 });
+
+test("Build and release says what is happening, and the bell sits in the header without covering Set a budget", async ({ page }) => {
+  await page.goto("/features/");
+  await page.getByRole("button", { name: /notification feature/ }).click();
+  await page.getByRole("list", { name: "Steps" }).getByRole("button", { name: /Build and release/ }).click();
+  await expect(page.getByRole("region", { name: "What is happening" })).toContainText("Nothing has started for this feature yet.");
+  const bell = await page.getByRole("button", { name: /Notifications/ }).boundingBox();
+  const budget = await page.getByRole("link", { name: /budget/i }).first().boundingBox();
+  expect(bell!.x).toBeGreaterThanOrEqual(budget!.x + budget!.width); // the bell is to the right, not on top
+});

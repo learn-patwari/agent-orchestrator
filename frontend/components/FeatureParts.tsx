@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { activityFor, short, type Run, type Task } from "../lib/activity";
 import { api } from "../lib/api";
 import { Alert } from "./ui";
 
@@ -182,5 +183,71 @@ export function FeatureSetup({ fid }: { fid: string }) {
       <p className="muted" role="status">{graph?.built ? `Built: ${graph.files} files, ${graph.symbols} symbols.` : graph?.reason ?? ""}</p>
       <button type="button" className="secondary" onClick={build}>{graph?.built ? "Rebuild graph" : "Build graph"}</button>
     </>
+  );
+}
+
+/** What is happening for a feature right now: who works, the latest finished runs, its tasks, and a way to get things moving. */
+export function FeatureActivity({ fid, title, approved }: { fid: string; title: string; approved: boolean }) {
+  const [runs, setRuns] = useState<Run[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    const load = () => {
+      api<Run[]>("/runs").then((r) => setRuns(Array.isArray(r) ? r : [])).catch(() => {});
+      api<Task[]>("/pipeline/tasks").then((t) => setTasks(Array.isArray(t) ? t : [])).catch(() => {});
+    };
+    load();
+    const t = setInterval(load, 5000);
+    return () => clearInterval(t);
+  }, [fid]);
+  const a = activityFor(fid, runs, tasks);
+
+  async function start() {
+    setErr("");
+    setMsg("");
+    try {
+      await api("/chat", "POST", { text: `Start development of the approved feature "${title}" (id ${fid}). Brief the developers now.` });
+      setMsg("Sent to the orchestrator. Watch this list; it updates every 5 seconds.");
+    } catch (e: any) {
+      setErr(e.detail ?? e.message);
+    }
+  }
+  return (
+    <div className="activity" role="region" aria-label="What is happening">
+      <h3>What is happening</h3>
+      <p role="status"><strong>{a.headline}</strong></p>
+      {err && <Alert>{err}</Alert>}
+      {msg && <Alert kind="ok">{msg}</Alert>}
+      {a.idle && approved && (
+        <p>
+          <button type="button" onClick={start}>Ask the orchestrator to start development</button>{" "}
+          <span className="muted">or say "start" in <a href="/chat/">Chat</a>.</span>
+        </p>
+      )}
+      {a.working.length > 0 && (
+        <ul>
+          {a.working.map((r) => (
+            <li key={r.id}><strong>{r.role}</strong>: {short(r.task)} <span className="muted">step {r.steps ?? 0}, {(r.tokens ?? 0).toLocaleString()} tokens</span></li>
+          ))}
+        </ul>
+      )}
+      {a.tasks.length > 0 && (
+        <>
+          <h4>Tasks</h4>
+          <ul>{a.tasks.map((t) => <li key={t.id}>{t.name} <span className="muted">{t.status.replace(/_/g, " ")}{t.owner ? `, ${t.owner}` : ""}</span></li>)}</ul>
+        </>
+      )}
+      {a.recent.length > 0 && (
+        <>
+          <h4>Latest finished runs</h4>
+          <ul>
+            {a.recent.map((r) => (
+              <li key={r.id}><strong>{r.role}</strong> {r.status}: {short(r.task, 70)}{r.error ? <span className="muted"> ({short(r.error, 80)})</span> : null}</li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
   );
 }

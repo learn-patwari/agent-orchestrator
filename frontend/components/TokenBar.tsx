@@ -1,4 +1,5 @@
 "use client";
+import { AttentionBar } from "./Attention";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
@@ -72,6 +73,7 @@ export default function TokenBar() {
         ) : null}
         {held.length > 0 ? <span className="tb-held">{held.length} feature{held.length > 1 ? "s" : ""} held</span> : null}
         <Link href="/profiles">{daily.limit ? "Budget" : "Set a budget"}</Link>
+        <AttentionBar />
       </div>
     </div>
   );

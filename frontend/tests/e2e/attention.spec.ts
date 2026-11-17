@@ -8,7 +8,7 @@ test("red numbers sit on the tabs that need you, and the list opens the exact pl
   await expect(nav.getByRole("link", { name: /^Agents/ }).getByRole("status")).toHaveText("1");
   await expect(nav.getByRole("link", { name: /Pipeline/ }).getByRole("status")).toHaveCount(0);
 
-  await page.getByRole("button", { name: /Waiting for you/ }).click();
+  await page.getByRole("button", { name: /Notifications/ }).click();
   const list = page.getByRole("region", { name: "Waiting list" });
   await expect(list.getByText("Which database?")).toBeVisible();
   await expect(list.getByText("tester failed: Run tests")).toBeVisible();

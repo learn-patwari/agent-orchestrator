@@ -3,7 +3,7 @@ import type { Viewport } from "next";
 import type { ReactNode } from "react";
 import Sidebar from "../components/Sidebar";
 import TokenBar from "../components/TokenBar";
-import { AttentionBar, AttentionProvider } from "../components/Attention";
+import { AttentionProvider } from "../components/Attention";
 
 export const metadata = { title: "Agent Orchestrator", description: "A team of AI agents for software development" };
 export const viewport: Viewport = {
@@ -25,7 +25,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <Sidebar />
           <div className="content">
             <TokenBar />
-            <AttentionBar />
             <main id="main" tabIndex={-1}>
               {children}
             </main>
