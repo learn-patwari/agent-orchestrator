@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import LiveStrip from "../../components/LiveStrip";
 import Office from "../../components/Office";
+import AgentChat from "../../components/AgentChat";
 import AgentState from "../../components/AgentState";
 import { Alert, Badge, Empty, PageHead } from "../../components/ui";
 import { api } from "../../lib/api";
@@ -32,6 +33,7 @@ export default function Status() {
   const [paused, setPaused] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [look, setLook] = useState<CharStyle>("robots");
+  const [chatWith, setChatWith] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -189,6 +191,7 @@ export default function Status() {
                   <dt>Steps</dt><dd>{sel.steps}</dd>
                   {sel.lastRun && (<><dt>Last run</dt><dd>failed, but the model answers now</dd></>)}
                 </dl>
+                <button onClick={() => setChatWith(sel.role)}>Chat with {seatLabel(sel.role)}</button>
               </>
             ) : (
               <span className="muted">Click a person, or a status button, to see its role, task and model.</span>
@@ -198,6 +201,8 @@ export default function Status() {
         </div>
         </>
       )}
+
+      {chatWith && <AgentChat role={chatWith} label={seatLabel(chatWith)} onClose={() => setChatWith(null)} />}
 
       {rows && rows.length > 0 && view === "table" && (
         <div className="table-wrap">

@@ -132,3 +132,8 @@ pub fn kv_set(key: &str, value: &Value) -> Result<()> {
 fn _object(m: Map<String, Value>) -> Value {
     Value::Object(m)
 }
+
+/// A fresh random id, for things that are named before they are stored (a chat session).
+pub fn new_session_id() -> String {
+    uuid::Uuid::new_v4().simple().to_string()
+}

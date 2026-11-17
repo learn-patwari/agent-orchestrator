@@ -15,7 +15,7 @@ use ao_core::orchestrator::{default_root, status_table, team_check, team_snapsho
 use ao_core::pipeline::docs_gate;
 use ao_core::pipeline::flow::{tasks, FlowError};
 use ao_core::pipeline::release::Release;
-use ao_core::providers::base::{HttpRequest, Provider};
+use ao_core::providers::base::{HttpRequest, Message, Provider};
 use ao_core::providers::http::default_transport;
 use ao_core::runtime::roles::{load_roles, Role};
 use ao_core::scheduler::Scheduler;
@@ -359,6 +359,91 @@ fn run_chat(st: &AppState, text: &str) -> R {
     }
 }
 
+// ---- chat with one agent (from the Office) ----
+
+const AGENT_CHAT_RULES: &str = "You are talking directly with the human, one to one. Answer from your role and from what you did; you cannot start other agents here. If asked to do something outside your role, say who should do it.";
+const AGENT_HISTORY: usize = 20;
+
+fn known_agent(role: &str) -> Result<(), ApiError> {
+    let roles = load_roles(&role_dirs()?);
+    if role_list(&roles).iter().any(|r| r == role) {
+        Ok(())
+    } else {
+        Err(ApiError::new(404, "unknown agent"))
+    }
+}
+
+fn agent_messages(role: &str, session: &str) -> Result<Vec<Value>, ApiError> {
+    Ok(DocRepo::new("messages")?.list()?.into_iter().filter(|m| m["agent_chat"] == role && m["session"] == session).collect())
+}
+
+fn agent_chat(st: &AppState, r: &Req) -> R {
+    let role = r.param("role");
+    known_agent(role)?;
+    let text = r.field("text")?;
+    if role == "orchestrator" {
+        return run_chat(st, &text); // the orchestrator keeps the main chat, the only one that can delegate
+    }
+    let mapping = role_models()?.get(role).cloned();
+    let rec = match mapping.as_ref().and_then(|m| m["provider_id"].as_str()) {
+        Some(pid) => DocRepo::new("providers")?.get(pid)?,
+        None => None,
+    };
+    let (Some(mapping), Some(rec)) = (mapping, rec) else { return bad(400, format!("no model configured for the {role} role")) };
+    let session = r.opt_str("session_id").filter(|s| !s.is_empty()).unwrap_or_else(|| ao_core::db::new_session_id());
+    let roles = load_roles(&role_dirs()?);
+    let body = roles.get(role).map_or("", |x| x.body.as_str());
+    let provider = st.build_provider(&rec).map_err(|e| ApiError::new(400, e.to_string()))?;
+    let model = mapping["model"].as_str().unwrap_or("");
+    let past = agent_messages(role, &session)?;
+    let mut convo = vec![Message::new("system", &[body, AGENT_CHAT_RULES].join("
+
+"))];
+    for m in past.iter().rev().take(AGENT_HISTORY).rev() {
+        convo.push(Message::new(m["role"].as_str().unwrap_or("user"), m["content"].as_str().unwrap_or("")));
+    }
+    let clean = redact(&text);
+    convo.push(Message::new("user", &clean));
+    let c = match provider.complete(model, &convo, None, 1024, None) {
+        Ok(c) => c,
+        Err(e) => return bad(502, redact(&format!("{}: {}", e.kind.as_str(), e.message))),
+    };
+    ao_core::providers::record_call(role, rec["id"].as_str().unwrap_or(""), model, c.usage, None)?;
+    let repo = DocRepo::new("messages")?;
+    for (who, content) in [("user", clean.as_str()), ("assistant", c.text.as_str())] {
+        repo.create(json!({"agent_chat": role, "session": session, "role": who, "content": content, "at": now()}), None)?;
+    }
+    ok(json!({"reply": c.text, "session_id": session}))
+}
+
+fn agent_chat_history(_: &AppState, r: &Req) -> R {
+    let role = r.param("role");
+    known_agent(role)?;
+    let Some(session) = r.query.get("session") else { return ok(json!([])) };
+    ok(Value::Array(agent_messages(role, session)?.iter().map(|m| json!({"role": m["role"], "content": m["content"], "at": m["at"]})).collect()))
+}
+
+fn agent_chat_sessions(_: &AppState, r: &Req) -> R {
+    let role = r.param("role");
+    known_agent(role)?;
+    let mut out: Vec<Value> = vec![];
+    for m in DocRepo::new("messages")?.list()?.into_iter().filter(|m| m["agent_chat"] == role) {
+        let id = s_of(&m["session"]);
+        let at = m["at"].as_f64().unwrap_or(0.0);
+        match out.iter_mut().find(|o| o["id"] == id) {
+            Some(o) => {
+                o["messages"] = json!(o["messages"].as_i64().unwrap_or(0) + 1);
+                if at > o["last_at"].as_f64().unwrap_or(0.0) {
+                    o["last_at"] = json!(at);
+                }
+            }
+            None => out.push(json!({"id": id, "title": s_of(&m["content"]).chars().take(60).collect::<String>(), "started_at": at, "last_at": at, "messages": 1})),
+        }
+    }
+    out.sort_by(|a, b| b["last_at"].as_f64().unwrap_or(0.0).total_cmp(&a["last_at"].as_f64().unwrap_or(0.0)));
+    ok(Value::Array(out))
+}
+
 fn attention_feed(_: &AppState, _: &Req) -> R {
     let items = ao_core::attention::items()?;
     ok(json!({"count": items.len(), "items": items}))
@@ -431,6 +516,9 @@ pub fn mount(r: Routes) -> Routes {
         .guarded(Method::GET, "/api/team", team)
         .guarded(Method::GET, "/api/office", office)
         .guarded(Method::POST, "/api/team/check", team_check_endpoint)
+        .guarded(Method::POST, "/api/agents/:role/chat", agent_chat)
+        .guarded(Method::GET, "/api/agents/:role/chat", agent_chat_history)
+        .guarded(Method::GET, "/api/agents/:role/chat/sessions", agent_chat_sessions)
         .guarded(Method::POST, "/api/chat", chat)
         .guarded(Method::GET, "/api/chat", chat_history)
         .guarded(Method::GET, "/api/attention", attention_feed)

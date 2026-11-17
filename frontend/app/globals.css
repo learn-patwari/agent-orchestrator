@@ -205,3 +205,9 @@ dl.detail dt{color:var(--muted)}dl.detail dd{margin:0}
 .win-none { color: var(--muted, #6e7781); }
 .win-form { border: 1px solid var(--border, #d0d7de); border-radius: 8px; margin: 12px 0; padding: 8px 12px; }
 .check { display: flex; gap: 8px; align-items: center; }
+
+.agent-chat { position: fixed; right: 16px; bottom: 16px; width: min(380px, calc(100vw - 32px)); max-height: 70vh; display: flex; flex-direction: column; gap: 8px; z-index: 30;
+  background: var(--card, #fff); border: 1px solid var(--border, #d0d7de); border-radius: 12px; padding: 12px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25); }
+.agent-chat-log { overflow-y: auto; flex: 1 1 auto; min-height: 120px; }
+.agent-chat-log p { margin: 4px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ac-me { text-align: right; font-weight: 600; }
