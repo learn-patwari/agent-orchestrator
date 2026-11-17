@@ -395,12 +395,12 @@ fn cli_xml_parameters_that_are_json_keep_their_type_and_unknown_tools_are_droppe
 }
 
 #[test]
-fn cli_unknown_tools_are_ignored_and_json_without_tools_stays_text() {
+fn cli_unknown_tools_are_ignored_and_json_without_tools_is_not_shown() {
     let (r, _) = fake("{\"tool_calls\": [{\"name\": \"rm_rf\", \"arguments\": {}}]}", 0, "", false);
     assert!(run(&cli(r), &[user("go")], Some(&[tool()])).unwrap().tool_calls.is_empty());
     let (r, _) = fake("{\"tool_calls\": [{\"name\": \"read_file\", \"arguments\": {}}]}", 0, "", false);
     let c = run(&cli(r), &[user("go")], None).unwrap();
-    assert!(c.tool_calls.is_empty() && c.text.contains("tool_calls"));
+    assert!(c.tool_calls.is_empty() && !c.text.contains("tool_calls"));
 }
 
 #[test]
@@ -463,6 +463,21 @@ fn cli_long_system_prompt_goes_on_stdin_so_the_command_line_stays_under_the_wind
     let (a, stdin, _) = calls.lock().unwrap()[0].clone();
     assert!(a.iter().map(|s| s.len() + 1).sum::<usize>() < 8_000, "command line too long");
     assert!(stdin.contains(&big) && stdin.contains("go"), "the system text must still reach the model");
+}
+
+#[test]
+fn cli_never_shows_a_tool_call_object_as_the_reply_text() {
+    let raw = "{\"tool_calls\": [{\"name\": \"list_runs\", \"arguments\": {}}]}";
+    let fenced = format!("Let me look.\n```json\n{raw}\n```");
+    // no tools offered, or a tool that is not on the list: the JSON is internal and must not reach the screen
+    for (reply, tools) in [(raw, None), (fenced.as_str(), None), (raw, Some(vec![tool()]))] {
+        let (r, _) = fake(reply, 0, "", false);
+        let c = run(&cli(r), &[user("go")], tools.as_deref()).unwrap();
+        assert!(!c.text.contains("tool_calls"), "leaked: {}", c.text);
+        assert!(c.tool_calls.is_empty());
+    }
+    let (r, _) = fake(&fenced, 0, "", false);
+    assert_eq!(run(&cli(r), &[user("go")], None).unwrap().text, "Let me look.");
 }
 
 #[test]

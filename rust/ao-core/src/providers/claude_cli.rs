@@ -164,6 +164,18 @@ impl ClaudeCliProvider {
         (WRAPPER.replace_all(&INVOKE.replace_all(text, ""), "").trim().to_string(), calls)
     }
 
+    /// The reply without a `{"tool_calls": [...]}` object (bare or in a code fence), when it has one.
+    fn without_tool_json(text: &str) -> String {
+        let is_calls = |s: &str| serde_json::from_str::<Value>(s.trim()).ok().is_some_and(|v| v.get("tool_calls").is_some_and(|c| c.is_array()));
+        if is_calls(text) {
+            return String::new();
+        }
+        match FENCE.captures(text) {
+            Some(c) if is_calls(&c[1]) => text.replace(&c[0], "").trim().to_string(),
+            _ => text.to_string(),
+        }
+    }
+
     fn extract_json(text: &str, allowed: &[&str]) -> (String, Vec<ToolCall>) {
         let m = FENCE.captures(text);
         let blob = m.as_ref().map(|c| c[1].to_string()).unwrap_or_else(|| text.trim().to_string());
@@ -237,6 +249,9 @@ impl Provider for ClaudeCliProvider {
         if let Some(ts) = tools {
             let names: Vec<&str> = ts.iter().map(|t| t.name.as_str()).collect();
             (text, calls) = Self::extract_calls(&text, &names);
+        }
+        if calls.is_empty() {
+            text = Self::without_tool_json(&text); // a call we cannot run is internal: never show it
         }
         let u = &data["usage"];
         Ok(Completion {
