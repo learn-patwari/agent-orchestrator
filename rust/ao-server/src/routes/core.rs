@@ -177,11 +177,60 @@ fn add_provider(_: &AppState, r: &Req) -> R {
     }
     let base_url = r.opt_str("base_url").unwrap_or_default();
     let key = r.opt_str("api_key").unwrap_or_default();
-    let rec = DocRepo::new("providers")?.create(
-        json!({"name": name, "type": kind, "base_url": base_url.trim_end_matches('/'), "api_key_enc": secrets::encrypt(&key)}),
-        None,
-    )?;
+    let mut doc = json!({"name": name, "type": kind, "base_url": base_url.trim_end_matches('/'), "api_key_enc": secrets::encrypt(&key)});
+    if let Some(w) = r.body.get("window").filter(|w| w.is_object()) {
+        doc["window"] = clean_window(w)?;
+    }
+    let rec = DocRepo::new("providers")?.create(doc, None)?;
     ok(public(&rec))
+}
+
+/// A usage-window setting as stored: on/off, length in hours (default 5), when a window starts (unix seconds), ping, optional token limit.
+fn clean_window(w: &Value) -> Result<Value, ApiError> {
+    let hours = w["length_hours"].as_f64().unwrap_or(5.0);
+    if !(hours > 0.0 && hours <= 168.0) {
+        return Err(ApiError::new(400, "window length must be between 0 and 168 hours"));
+    }
+    Ok(json!({"enabled": w["enabled"].as_bool().unwrap_or(false), "length_hours": hours, "anchor": w["anchor"].as_f64().unwrap_or_else(ao_core::db::now),
+        "ping": w["ping"].as_bool().unwrap_or(false), "token_limit": w["token_limit"].as_i64().filter(|n| *n > 0)}))
+}
+
+fn put_provider_window(_: &AppState, r: &Req) -> R {
+    let repo = DocRepo::new("providers")?;
+    if repo.get(r.param("pid"))?.is_none() {
+        return bad(404, "not found");
+    }
+    let rec = repo.update(r.param("pid"), json!({"window": clean_window(&r.body)?}))?;
+    ok(public(&rec.unwrap_or_default()))
+}
+
+fn provider_windows(_: &AppState, _: &Req) -> R {
+    ok(Value::Array(ao_core::windows::rows(ao_core::db::now()).map_err(|e| ApiError::new(500, e.to_string()))?))
+}
+
+/// Sends one tiny request to the provider (with the model a role already uses on it) and records the reset it reports.
+pub(crate) fn ping_provider(st: &AppState, pid: &str) -> Result<Value, String> {
+    let rec = DocRepo::new("providers").map_err(|e| e.to_string())?.get(pid).map_err(|e| e.to_string())?.ok_or("provider not found")?;
+    let models = kv_get("role_models", json!({})).map_err(|e| e.to_string())?;
+    let model = models.as_object().into_iter().flatten().find(|(_, m)| m["provider_id"] == pid).and_then(|(_, m)| m["model"].as_str().map(String::from));
+    let Some(model) = model else { return Err("no role uses this provider yet, so there is no model to send the ping to".into()) };
+    let provider = st.build_provider(&rec).map_err(|e| e.to_string())?;
+    let at = ao_core::db::now();
+    let sent = provider.test_connection(&model).map_err(|e| secrets::redact(&e.to_string()));
+    let headers = providers::http::last_headers(rec["base_url"].as_str().unwrap_or(""));
+    let actual = ao_core::windows::parse_reset(&headers, at);
+    ao_core::windows::mark_pinged(pid, at).map_err(|e| e.to_string())?;
+    if actual.is_some() || sent.is_ok() {
+        ao_core::windows::record_actual(pid, actual, at).map_err(|e| e.to_string())?;
+    }
+    sent.map(|_| json!({"ok": true, "actual_reset": actual}))
+}
+
+fn check_provider_window(st: &AppState, r: &Req) -> R {
+    match ping_provider(st, r.param("pid")) {
+        Ok(v) => ok(v),
+        Err(e) => ok(json!({"ok": false, "error": e})),
+    }
 }
 
 fn delete_provider(_: &AppState, r: &Req) -> R {
@@ -296,6 +345,9 @@ pub fn mount(r: Routes) -> Routes {
         .guarded(Method::GET, "/api/dev-folder", dev_folder)
         .guarded(Method::GET, "/api/providers/presets", provider_presets)
         .guarded(Method::GET, "/api/providers/types", provider_types)
+        .guarded(Method::GET, "/api/providers/windows", provider_windows)
+        .guarded(Method::PUT, "/api/providers/:pid/window", put_provider_window)
+        .guarded(Method::POST, "/api/providers/:pid/window/check", check_provider_window)
         .guarded(Method::GET, "/api/providers", list_providers)
         .guarded(Method::POST, "/api/providers", add_provider)
         .guarded(Method::DELETE, "/api/providers/:pid", delete_provider)

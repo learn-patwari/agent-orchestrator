@@ -18,6 +18,14 @@ const api = {
   "/api/features/f1/budget": { limit: null, used: 0, held: false },
   "/api/features/f1/skills": { available: [], selected: [] },
   "/api/chat": [],
+  "/api/providers": [{ id: "p1", name: "Anthropic", type: "anthropic", base_url: "https://api.anthropic.com", api_key: "sk-...1234" }],
+  "/api/providers/types": { types: ["openai", "anthropic", "claude_cli"] },
+  "/api/providers/presets": { presets: [
+    { id: "openai", name: "OpenAI", type: "openai", base_url: "https://api.openai.com/v1", needs_key: true, note: "" },
+    { id: "openrouter", name: "OpenRouter", type: "openai", base_url: "https://openrouter.ai/api/v1", needs_key: true, note: "" },
+  ] },
+  "/api/providers/windows": [{ provider_id: "p1", name: "Anthropic", length_hours: 5, anchor: 0, ping: true, next_trigger: 1800000000, actual_reset: 1800003600, verdict: "differ" }],
+  "/api/role-models": { roles: ["orchestrator"], models: {} },
   "/api/attention": { count: 3, items: [
     { id: "inbox:i1", kind: "approval", title: "Approve the SRS", detail: "", link: "/features/?id=f1", at: 3 },
     { id: "inbox:i2", kind: "question", title: "Which database?", detail: "", link: "/inbox/", at: 2 },

@@ -199,3 +199,9 @@ dl.detail dt{color:var(--muted)}dl.detail dd{margin:0}
 .attn-list { position: absolute; right: 0; top: 100%; z-index: 20; width: min(420px, 92vw); display: grid; gap: 6px; max-height: 60vh; overflow: auto; }
 .attn-row { display: grid; gap: 2px; padding: 8px; border-radius: 8px; text-decoration: none; color: inherit; }
 .attn-row:hover { background: var(--surface-2); }
+
+.win-ok { color: #1a7f37; }
+.win-bad { color: #cf222e; }
+.win-none { color: var(--muted, #6e7781); }
+.win-form { border: 1px solid var(--border, #d0d7de); border-radius: 8px; margin: 12px 0; padding: 8px 12px; }
+.check { display: flex; gap: 8px; align-items: center; }

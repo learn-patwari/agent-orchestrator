@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Badge, Empty, PageHead } from "../../components/ui";
 import { api } from "../../lib/api";
+import { clock, noWindow, verdictClass, verdictText, windowBody, type Verdict, type WindowForm } from "../../lib/windows";
 
 type Result = { state: "testing" | "ok" | "fail"; text: string };
 
@@ -21,10 +22,15 @@ export default function Providers() {
   const [err, setErr] = useState("");
   const [saved, setSaved] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [win, setWin] = useState<WindowForm>(noWindow);
+  const [rows, setRows] = useState<Record<string, any>>({});
+  const [checking, setChecking] = useState("");
 
   async function load() {
     try {
       setList(await api("/providers"));
+      const wr: any[] = await api("/providers/windows");
+      setRows(Object.fromEntries(wr.map((x) => [x.provider_id, x])));
       setTypes((await api("/providers/types")).types);
       const ps = (await api("/providers/presets")).presets;
       setPresets(ps);
@@ -50,7 +56,7 @@ export default function Providers() {
     e.preventDefault();
     setErr("");
     try {
-      await api("/providers", "POST", f);
+      await api("/providers", "POST", { ...f, window: windowBody(win, pid) });
       setSaved(`Added ${f.name || "provider"}. Test it below, then assign it to roles.`);
       setF({ ...f, name: "", api_key: "" });
       load();
@@ -70,6 +76,18 @@ export default function Providers() {
       r = { state: "fail", text: `Failed: ${e.message}` };
     }
     setRes((x) => ({ ...x, [id]: r }));
+  }
+  async function check(id: string) {
+    setChecking(id);
+    try {
+      const r = await api(`/providers/${id}/window/check`, "POST", {});
+      setSaved(r.ok ? "Checked. The reset the provider reports is shown on its card." : `Could not check: ${r.error}`);
+      await load();
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setChecking("");
+    }
   }
   async function remove(p: any) {
     if (!window.confirm(`Delete provider “${p.name}”? Roles that use it will need a new provider.`)) return;
@@ -139,6 +157,15 @@ export default function Providers() {
                     {r.text}
                   </p>
                 )}
+                {rows[p.id] && (
+                  <p className="win" style={{ margin: "8px 0 0" }}>
+                    Window {rows[p.id].length_hours} h · next starts <strong>{clock(rows[p.id].next_trigger)}</strong> · provider says{" "}
+                    <strong className={verdictClass(rows[p.id].verdict as Verdict)}>{clock(rows[p.id].actual_reset)} ({verdictText(rows[p.id].verdict as Verdict)})</strong>
+                    <button className="secondary small" style={{ marginLeft: 8 }} disabled={checking === p.id} onClick={() => check(p.id)}>
+                      {checking === p.id ? "Checking…" : "Check now"}
+                    </button>
+                  </p>
+                )}
                 <div className="row" style={{ marginBottom: 0 }}>
                   <button className="danger small" onClick={() => remove(p)}>Delete</button>
                 </div>
@@ -183,6 +210,28 @@ export default function Providers() {
             <input id="k" name="api_key" type="password" autoComplete="off" spellCheck={false} value={f.api_key} onChange={(e) => setF({ ...f, api_key: e.target.value })} required={needsKey} />
             <p className="field-note">Stored encrypted on this computer and never shown again in full.</p>
           </>
+        )}
+        {pid !== "openrouter" && (
+          <fieldset className="win-form">
+            <legend>Usage window</legend>
+            <label className="check">
+              <input type="checkbox" checked={win.enabled} onChange={(e) => setWin({ ...win, enabled: e.target.checked })} /> Keep a repeating usage window for this provider
+            </label>
+            {win.enabled && (
+              <>
+                <label htmlFor="wh">Window length (hours)</label>
+                <input id="wh" type="number" min="1" max="168" step="0.5" value={win.hours} onChange={(e) => setWin({ ...win, hours: e.target.value })} />
+                <label htmlFor="ws">A window starts at (leave empty for now)</label>
+                <input id="ws" type="datetime-local" value={win.start} onChange={(e) => setWin({ ...win, start: e.target.value })} />
+                <label className="check">
+                  <input type="checkbox" checked={win.ping} onChange={(e) => setWin({ ...win, ping: e.target.checked })} /> Send a tiny message when each window starts, so it opens on schedule
+                </label>
+                <label htmlFor="wl">Token limit per window (optional)</label>
+                <input id="wl" type="number" min="1" inputMode="numeric" placeholder="Only if the provider does not report it" value={win.limit} onChange={(e) => setWin({ ...win, limit: e.target.value })} />
+                <p className="field-note">The app compares its schedule with the reset the provider reports and tells you when they differ. OpenRouter has no windows.</p>
+              </>
+            )}
+          </fieldset>
         )}
         <div className="row">
           <button type="submit">Add Provider</button>

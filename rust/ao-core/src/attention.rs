@@ -49,6 +49,11 @@ pub fn items() -> Result<Vec<Value>> {
         let detail = if kind == "task_failed" { short(&text(&r["error"]), 160) } else { short(&text(&r["task"]), 160) };
         out.push(json!({"id": id, "kind": kind, "title": format!("{} {verb}: {}", text(&r["role"]), short(&text(&r["task"]), 60)), "detail": detail, "link": "/status/", "at": at}));
     }
+    for (pid, name, expected, actual) in crate::windows::mismatches()? {
+        let fmt = |t: Option<f64>| t.and_then(|t| chrono::DateTime::from_timestamp(t as i64, 0)).map_or("?".into(), |d| d.with_timezone(&chrono::Local).format("%H:%M").to_string());
+        out.push(json!({"id": format!("window:{pid}"), "kind": "warning", "title": format!("{name}: usage window differs from the schedule"),
+            "detail": format!("expected reset {}, provider says {}", fmt(expected), fmt(actual)), "link": "/providers/", "at": now()}));
+    }
     out.sort_by(|a, b| b["at"].as_f64().unwrap_or(0.0).total_cmp(&a["at"].as_f64().unwrap_or(0.0)));
     Ok(out)
 }

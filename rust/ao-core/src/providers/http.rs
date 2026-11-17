@@ -20,6 +20,30 @@ pub struct HttpProvider {
     backoff: f64,
 }
 
+static SEEN: std::sync::Mutex<Vec<(String, Vec<(String, String)>)>> = std::sync::Mutex::new(Vec::new());
+
+fn host(url: &str) -> String {
+    url.split("://").nth(1).unwrap_or(url).split('/').next().unwrap_or("").to_string()
+}
+
+/// The rate-limit headers the last answer from this host carried (used to read the provider's usage-window reset).
+pub fn last_headers(base_url: &str) -> Vec<(String, String)> {
+    let h = host(base_url);
+    SEEN.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|(k, _)| *k == h).map(|(_, v)| v.clone()).unwrap_or_default()
+}
+
+pub fn remember_headers(url: &str, headers: Vec<(String, String)>) {
+    let (h, mut all) = (host(url), SEEN.lock().unwrap_or_else(|e| e.into_inner()));
+    all.retain(|(k, _)| *k != h);
+    all.push((h, headers));
+}
+
+fn keep(resp: &ureq::Response, url: &str) {
+    let wanted = |n: &str| n.to_lowercase().contains("ratelimit") || n.eq_ignore_ascii_case("retry-after");
+    let list = resp.headers_names().into_iter().filter(|n| wanted(n)).filter_map(|n| resp.header(&n).map(|v| (n.clone(), v.to_string()))).collect();
+    remember_headers(url, list);
+}
+
 /// The real network call (ureq, rustls). Any HTTP status is an answer; only connection failures are `Err`.
 pub fn default_transport(timeout_secs: u64) -> Transport {
     Arc::new(move |req: &HttpRequest| {
@@ -30,9 +54,13 @@ pub fn default_transport(timeout_secs: u64) -> Transport {
         match r.send_string(&req.body.to_string()) {
             Ok(resp) => {
                 let status = resp.status();
+                keep(&resp, &req.url);
                 Ok(HttpResponse { status, body: resp.into_string().map_err(|e| e.to_string())? })
             }
-            Err(ureq::Error::Status(status, resp)) => Ok(HttpResponse { status, body: resp.into_string().unwrap_or_default() }),
+            Err(ureq::Error::Status(status, resp)) => {
+                keep(&resp, &req.url);
+                Ok(HttpResponse { status, body: resp.into_string().unwrap_or_default() })
+            }
             Err(e) => Err(e.to_string()),
         }
     })

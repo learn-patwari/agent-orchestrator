@@ -1,6 +1,7 @@
 //! Agent Orchestrator core. Port of the Python backend, module by module (docs/design/rust-port.md).
 pub mod agent_registry;
 pub mod attention;
+pub mod windows;
 pub mod auth;
 pub mod ba;
 pub mod budget;

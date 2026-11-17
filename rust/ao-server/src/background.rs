@@ -29,6 +29,11 @@ pub fn tick_once(st: &AppState) {
             let _ = Scheduler::new(pause).tick(now(), pct, &mut run_job);
         }
     }
+    if let Ok(due) = ao_core::windows::due_pings(now()) {
+        for pid in due {
+            let _ = crate::routes::ping_provider(st, &pid); // a failed ping is tried again next window; the row shows no reset
+        }
+    }
     if let Ok(fids) = Budget.tick(now()) {
         for fid in fids {
             let _ = restart_held(st, &fid);

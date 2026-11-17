@@ -1,5 +1,6 @@
 //! The route groups. Each module mounts its routes on `Routes`; `all()` puts them together.
 mod core;
+pub(crate) use core::ping_provider;
 mod extras;
 mod flow;
 mod runs;
