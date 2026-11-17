@@ -49,8 +49,9 @@ pub fn get_settings() -> Result<Value, DbError> {
         merged.extend(s.clone());
     }
     merged.insert("feature_flags".into(), Value::Object(flags));
-    let (roles, mut skills) = crate::plugins::dirs()?;
-    skills.push(crate::config::data_dir().join("skills").to_string_lossy().into_owned()); // skills the user uploaded
+    let (roles, plugin_skills) = crate::plugins::dirs()?;
+    let mut skills = vec![crate::config::data_dir().join("skills").to_string_lossy().into_owned()]; // skills the user uploaded
+    skills.extend(plugin_skills);
     for (key, extra) in [("role_dirs", roles), ("skill_paths", skills)] {
         let mut all = merged.get(key).and_then(|v| v.as_array()).cloned().unwrap_or_default();
         all.extend(extra.into_iter().map(Value::String));

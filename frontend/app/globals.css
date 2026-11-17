@@ -211,3 +211,11 @@ dl.detail dt{color:var(--muted)}dl.detail dd{margin:0}
 .agent-chat-log { overflow-y: auto; flex: 1 1 auto; min-height: 120px; }
 .agent-chat-log p { margin: 4px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .ac-me { text-align: right; font-weight: 600; }
+.stepper { list-style: none; margin: 12px 0 18px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.stepper .step button { display: flex; gap: 8px; align-items: center; }
+.stepper .step-n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line); font-size: 12px; }
+.stepper .step.done .step-n { background: var(--ok, #2e7d32); color: #fff; border-color: transparent; }
+.stepper button[aria-current="step"] { outline: 2px solid var(--accent, #3b6cf6); outline-offset: 1px; }
+.skill-desc { margin: 2px 0 8px 26px; color: var(--muted, #666); font-size: 13px; }
+.srs-sec { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; margin: 8px 0; }
+.srs-sec summary { cursor: pointer; font-weight: 600; }

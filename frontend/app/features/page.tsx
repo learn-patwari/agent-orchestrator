@@ -1,17 +1,11 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { FeatureSetup, FeatureSkills } from "../../components/FeatureParts";
 import { Alert, Badge, Empty, PageHead } from "../../components/ui";
 import { api } from "../../lib/api";
-import { Block, parseMarkdown, srsApprovalItem } from "../../lib/markdown";
-
-const STEP: Record<string, string> = {
-  questioning: "Answer the questions in the Inbox",
-  ready: "All questions answered: generate the SRS",
-  srs_draft: "SRS ready: approve it in the Inbox to start development",
-  approved: "Approved: development can start",
-  rejected: "SRS rejected",
-};
+import { Block, srsApprovalItem } from "../../lib/markdown";
+import { sections, stepsFor } from "../../lib/stepper";
 
 function TokenLimit({ fid }: { fid: string }) {
   const [b, setB] = useState<any>(null);
@@ -21,7 +15,7 @@ function TokenLimit({ fid }: { fid: string }) {
 
   async function load() {
     try {
-      const d = await api(`/features/${fid}/budget`);
+      const d = await api<any>(`/features/${fid}/budget`);
       setB(d);
       setLimit(d.limit ? String(d.limit) : "");
       setAt(d.resume_at ? new Date(d.resume_at * 1000).toISOString().slice(0, 16) : "");
@@ -80,62 +74,10 @@ function TokenLimit({ fid }: { fid: string }) {
   );
 }
 
-function FeatureSkills({ fid }: { fid: string }) {
-  const [d, setD] = useState<any>(null);
-  const [pick, setPick] = useState<string[]>([]);
-  const [err, setErr] = useState("");
-
-  useEffect(() => {
-    api(`/features/${fid}/skills`)
-      .then((x) => {
-        setD(x);
-        setPick(x.selected);
-      })
-      .catch((e) => setErr(e.message));
-  }, [fid]);
-
-  async function save() {
-    setErr("");
-    try {
-      const x = await api(`/features/${fid}/skills`, "PUT", { skills: pick });
-      setD(x);
-      setPick(x.selected);
-    } catch (e: any) {
-      setErr(e.message);
-    }
-  }
-  if (!d) return err ? <Alert>{err}</Alert> : null;
-  const est = d.available.filter((s: any) => pick.includes(s.name)).reduce((n: number, s: any) => n + s.tokens, 0);
+function Blocks({ blocks }: { blocks: Block[] }) {
   return (
     <>
-      <h3>Skills for this feature</h3>
-      <p className="muted">Chosen skills are loaded into the agent's prompt when its run starts, so it does not spend steps looking for them. About {est.toLocaleString()} tokens per run.</p>
-      {err && <Alert>{err}</Alert>}
-      {d.available.length === 0 ? (
-        <p className="muted">No skills found. Add a skills folder in Settings.</p>
-      ) : (
-        <ul className="plain">
-          {d.available.map((s: any) => (
-            <li key={s.name}>
-              <label>
-                <input type="checkbox" checked={pick.includes(s.name)} onChange={(e) => setPick(e.target.checked ? [...pick, s.name] : pick.filter((n) => n !== s.name))} />{" "}
-                {s.name} <span className="muted">~{s.tokens.toLocaleString()} tokens. {s.description}</span>
-              </label>
-            </li>
-          ))}
-        </ul>
-      )}
-      <button type="button" className="secondary" onClick={save}>
-        Save skills
-      </button>
-    </>
-  );
-}
-
-function Markdown({ text }: { text: string }) {
-  return (
-    <div className="md">
-      {parseMarkdown(text).map((b: Block, i) =>
+      {blocks.map((b, i) =>
         b.type === "heading" ? (
           <h4 key={i}>{b.text}</h4>
         ) : b.type === "list" ? (
@@ -151,6 +93,28 @@ function Markdown({ text }: { text: string }) {
           <p key={i}>{b.text}</p>
         ),
       )}
+    </>
+  );
+}
+
+/** The whole SRS, one fold per section; all open at first so nothing is hidden before it is read. */
+function SrsSections({ text }: { text: string }) {
+  const [open, setOpen] = useState(true);
+  const [rev, setRev] = useState(0); // remount the folds when "Collapse all" / "Expand all" is used
+  const parts = sections(text);
+  return (
+    <div className="md" key={rev}>
+      <div className="row">
+        <button type="button" className="secondary small" onClick={() => (setOpen(!open), setRev(rev + 1))}>
+          {open ? "Collapse all" : "Expand all"}
+        </button>
+      </div>
+      {parts.map((p, i) => (
+        <details key={`${rev}-${i}`} open={open} className="srs-sec">
+          <summary>{p.title || "Introduction"}</summary>
+          <Blocks blocks={p.blocks} />
+        </details>
+      ))}
     </div>
   );
 }
@@ -161,7 +125,7 @@ function SrsDecision({ fid, onDone }: { fid: string; onDone: () => void }) {
   const [state, setState] = useState<"loading" | "ready" | "none">("loading");
   const [err, setErr] = useState("");
   useEffect(() => {
-    api("/inbox?status=open")
+    api<any[]>("/inbox?status=open")
       .then((items) => {
         const it = srsApprovalItem(items, fid);
         setItem(it ?? null);
@@ -203,6 +167,7 @@ export default function Features() {
   const [list, setList] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false); // no empty message until the first answer arrives
   const [sel, setSel] = useState<any>(null);
+  const [step, setStep] = useState(""); // the step being looked at; empty = the feature's current step
   const [srs, setSrs] = useState("");
   const [f, setF] = useState({ title: "", text: "" });
   const [err, setErr] = useState("");
@@ -214,7 +179,8 @@ export default function Features() {
       setLoaded(true);
       const cur = id ?? sel?.id;
       if (cur) {
-        const d = await api(`/features/${cur}`);
+        const d = await api<any>(`/features/${cur}`);
+        if (id && id !== sel?.id) setStep("");
         setSel(d);
         setSrs(d.srs_md ?? "");
       }
@@ -247,20 +213,26 @@ export default function Features() {
     }
   }
 
+  const steps = sel ? stepsFor(sel.status) : [];
+  const shown = step || steps.find((s) => s.state === "current")?.id || "setup";
+
   return (
     <>
-      <PageHead title="Features" sub="Describe what you want. The architect asks questions, then writes the SRS and a phased plan for you to approve." />
-      <form onSubmit={create} className="card">
-        <label htmlFor="ft">Title</label>
-        <input id="ft" name="title" autoComplete="off" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} required />
-        <label htmlFor="fx">What do you want?</label>
-        <textarea id="fx" name="text" autoComplete="off" rows={5} placeholder="e.g. Let patients book, move and cancel appointments online…" value={f.text} onChange={(e) => setF({ ...f, text: e.target.value })} required />
-        <div className="row">
-          <button type="submit" disabled={busy}>
-            {busy ? "Analysing…" : "Hand to the Architect"}
-          </button>
-        </div>
-      </form>
+      <PageHead title="Features" sub="Describe what you want. The architect asks questions, then writes the SRS and a phased plan for you to approve. Several features can run at the same time." />
+      <details className="card" open={loaded && list.length === 0}>
+        <summary>New feature</summary>
+        <form onSubmit={create}>
+          <label htmlFor="ft">Title</label>
+          <input id="ft" name="title" autoComplete="off" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} required />
+          <label htmlFor="fx">What do you want?</label>
+          <textarea id="fx" name="text" autoComplete="off" rows={5} placeholder="e.g. Let patients book, move and cancel appointments online…" value={f.text} onChange={(e) => setF({ ...f, text: e.target.value })} required />
+          <div className="row">
+            <button type="submit" disabled={busy}>
+              {busy ? "Analysing…" : "Hand to the Architect"}
+            </button>
+          </div>
+        </form>
+      </details>
       {err && <Alert>{err}</Alert>}
       {loaded && list.length === 0 ? (
         <Empty title="No features yet">Your first feature will appear here once you hand it to the architect.</Empty>
@@ -278,59 +250,86 @@ export default function Features() {
       {sel && (
         <div className="card">
           <h2>{sel.title}</h2>
-          <p>
-            <strong>Next:</strong> {STEP[sel.status] ?? sel.status}{" "}
-            {(sel.status === "questioning" || sel.status === "srs_draft") && <Link href="/inbox">Open inbox</Link>}
-          </p>
-          {sel.status === "srs_draft" && <SrsDecision key={`d${sel.id}`} fid={sel.id} onDone={() => load(sel.id)} />}
-          {sel.status !== "rejected" && <TokenLimit key={sel.id} fid={sel.id} />}
-          {sel.status !== "rejected" && <FeatureSkills key={`s${sel.id}`} fid={sel.id} />}
-          <h3>Understanding</h3>
-          <p>{sel.analysis?.restatement}</p>
-          <p className="muted">{sel.analysis?.why}</p>
-          <h3>Impact (architect view)</h3>
-          <ul>
-            {["modules", "data", "security", "risks"].map((k) => (
-              <li key={k}>
-                <strong>{k}:</strong> {(sel.analysis?.impact?.[k] ?? []).join(", ") || "none identified"}
+          <ol className="stepper" aria-label="Steps">
+            {steps.map((s, i) => (
+              <li key={s.id} className={`step ${s.state}`}>
+                <button type="button" className="secondary" aria-current={shown === s.id ? "step" : undefined} onClick={() => setStep(s.id)}>
+                  <span className="step-n">{s.state === "done" ? "✓" : i + 1}</span> {s.label}
+                </button>
               </li>
             ))}
-          </ul>
-          <h3>Decisions and assumptions</h3>
-          <ul>
-            {sel.qa.map((q: any) => (
-              <li key={q.item_id}>
-                {q.question}: <em>{q.answer}</em> {q.by !== "human" && <strong>[A]</strong>}
-              </li>
-            ))}
-          </ul>
-          {sel.status === "ready" && (
-            <button disabled={busy} onClick={async () => { await run(() => api(`/features/${sel.id}/finalize`, "POST")); await load(sel.id); }}>
-              {busy ? "Writing SRS…" : "Generate SRS and Plan"}
-            </button>
-          )}
-          {sel.plan && (
+          </ol>
+
+          {shown === "setup" && (
             <>
-              <h3>Plan (lanes run in parallel; same lane = stacked)</h3>
-              {sel.plan.map((ph: any) => (
-                <div key={ph.id}>
-                  <strong>{ph.id}: {ph.name}</strong>
-                  <ul>
-                    {ph.tasks.map((t: any) => (
-                      <li key={t.id}>
-                        {t.id} {t.title} <span className="muted">lane {t.lane}, wave {t.wave}
-                        {t.stacked_on ? `, stacked on ${t.stacked_on}` : ""}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
+              <FeatureSetup key={`u${sel.id}`} fid={sel.id} />
+              <TokenLimit key={`t${sel.id}`} fid={sel.id} />
             </>
           )}
-          {srs && (
+          {shown === "skills" && <FeatureSkills key={`s${sel.id}`} fid={sel.id} />}
+          {shown === "questions" && (
             <>
-              <h3>SRS</h3>
-              <Markdown text={srs} />
+              <p>
+                <strong>Next:</strong> {sel.status === "ready" ? "All questions answered: generate the SRS." : "Answer the questions in the Inbox."}{" "}
+                {sel.status === "questioning" && <Link href="/inbox">Open inbox</Link>}
+              </p>
+              <h3>Understanding</h3>
+              <p>{sel.analysis?.restatement}</p>
+              <p className="muted">{sel.analysis?.why}</p>
+              <h3>Impact (architect view)</h3>
+              <ul>
+                {["modules", "data", "security", "risks"].map((k) => (
+                  <li key={k}>
+                    <strong>{k}:</strong> {(sel.analysis?.impact?.[k] ?? []).join(", ") || "none identified"}
+                  </li>
+                ))}
+              </ul>
+              <h3>Decisions and assumptions</h3>
+              <ul>
+                {sel.qa.map((q: any) => (
+                  <li key={q.item_id}>
+                    {q.question}: <em>{q.answer}</em> {q.by !== "human" && <strong>[A]</strong>}
+                  </li>
+                ))}
+              </ul>
+              {sel.status === "ready" && (
+                <button disabled={busy} onClick={async () => { await run(() => api(`/features/${sel.id}/finalize`, "POST")); await load(sel.id); setStep(""); }}>
+                  {busy ? "Writing SRS…" : "Generate SRS and Plan"}
+                </button>
+              )}
+            </>
+          )}
+          {shown === "srs" && (
+            <>
+              {sel.status === "srs_draft" && <SrsDecision key={`d${sel.id}`} fid={sel.id} onDone={() => load(sel.id)} />}
+              {sel.status === "rejected" && <Alert kind="warn">The SRS was rejected. Hand the feature to the architect again with what to change.</Alert>}
+              {srs ? <SrsSections key={`m${sel.id}${srs.length}`} text={srs} /> : <p className="muted">The SRS is written once every question is answered.</p>}
+            </>
+          )}
+          {shown === "build" && (
+            <>
+              <p>
+                <strong>Next:</strong> {sel.status === "approved" ? "Approved: development can start." : "Development starts after the SRS is approved."}
+              </p>
+              {sel.plan ? (
+                <>
+                  <h3>Plan (lanes run in parallel; same lane = stacked)</h3>
+                  {sel.plan.map((ph: any) => (
+                    <div key={ph.id}>
+                      <strong>{ph.id}: {ph.name}</strong>
+                      <ul>
+                        {ph.tasks.map((t: any) => (
+                          <li key={t.id}>
+                            {t.id} {t.title} <span className="muted">lane {t.lane}, wave {t.wave}{t.stacked_on ? `, stacked on ${t.stacked_on}` : ""}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <p className="muted">No plan yet.</p>
+              )}
             </>
           )}
         </div>
