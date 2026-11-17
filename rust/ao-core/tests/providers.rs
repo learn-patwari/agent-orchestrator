@@ -455,6 +455,17 @@ fn cli_system_prompt_gets_the_tool_rules_and_tool_descriptions() {
 }
 
 #[test]
+fn cli_long_system_prompt_goes_on_stdin_so_the_command_line_stays_under_the_windows_limit() {
+    // Windows refuses a command line over ~32k characters (os error 206, "filename too long")
+    let big = "rule. ".repeat(10_000);
+    let (r, calls) = fake("ok", 0, "", false);
+    run(&cli(r), &[Message::new("system", &big), user("go")], None).unwrap();
+    let (a, stdin, _) = calls.lock().unwrap()[0].clone();
+    assert!(a.iter().map(|s| s.len() + 1).sum::<usize>() < 8_000, "command line too long");
+    assert!(stdin.contains(&big) && stdin.contains("go"), "the system text must still reach the model");
+}
+
+#[test]
 fn pasted_program_paths_are_cleaned() {
     assert_eq!(normalise_exe("& \"C:\\a b\\claude.exe\""), "C:\\a b\\claude.exe");
     assert_eq!(normalise_exe("  'C:/x/claude.exe' "), "C:/x/claude.exe");

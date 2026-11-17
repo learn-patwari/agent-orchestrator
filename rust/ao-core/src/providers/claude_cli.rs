@@ -14,6 +14,8 @@ pub const TOOL_RULES: &str = concat!(
     "{\"tool_calls\": [{\"name\": \"<tool>\", \"arguments\": {...}}]}. Do this whenever the task needs one of them. ",
     "If no tool is needed, answer in plain text.\nTools:\n"
 );
+/// Longest system prompt (characters) passed as a command-line argument; longer ones go on stdin.
+const MAX_SYSTEM_ARG: usize = 6_000;
 pub const REMINDER: &str = "\n\n[Reminder] Reply with the JSON tool_calls object if you need a listed tool; no native tools exist.";
 
 static INVOKE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?s)<invoke\s+name="([^"]+)"\s*>(.*?)</invoke>"#).expect("valid pattern"));
@@ -201,14 +203,20 @@ impl Provider for ClaudeCliProvider {
             let lines: Vec<String> = ts.iter().map(|t| format!("- {}: {} Parameters: {}", t.name, t.description, py_dumps(&t.parameters))).collect();
             system.push_str(&lines.join("\n"));
         }
+        // Windows refuses a command line over ~32k characters (os error 206), so a long system prompt travels on stdin.
+        let (sys_arg, sys_in) = if system.len() > MAX_SYSTEM_ARG {
+            ("Follow the instructions in the section 'System instructions' at the start of the input.".to_string(), format!("System instructions:\n{system}\n\n---\n\n"))
+        } else {
+            (system, String::new())
+        };
         let argv: Vec<String> = ["-p", "--output-format", "json", "--tools", "", "--model"]
             .iter()
             .map(|s| s.to_string())
-            .chain([model.to_string(), "--system-prompt".into(), system, "--no-session-persistence".into()])
+            .chain([model.to_string(), "--system-prompt".into(), sys_arg, "--no-session-persistence".into()])
             .collect();
         let argv: Vec<String> = std::iter::once(self.exe.clone()).chain(argv).collect();
         let env: HashMap<String, String> = std::env::vars().filter(|(k, _)| k != "ANTHROPIC_API_KEY").collect();
-        let stdin = flatten(messages) + if tools.is_some() { REMINDER } else { "" };
+        let stdin = sys_in + &flatten(messages) + if tools.is_some() { REMINDER } else { "" };
         let (code, out, err) = (self.run)(&argv, &stdin, &env, self.timeout).map_err(|e| match e {
             RunError::Timeout(m) => ProviderError::new(Kind::Network, format!("claude did not answer in time: {m}")),
             RunError::NotFound(m) | RunError::Io(m) => ProviderError::new(Kind::Network, format!("could not run claude ({}): {m}", self.exe)),
