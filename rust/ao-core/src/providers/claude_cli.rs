@@ -224,7 +224,8 @@ impl Provider for ClaudeCliProvider {
         let argv: Vec<String> = ["-p", "--output-format", "json", "--tools", "", "--model"]
             .iter()
             .map(|s| s.to_string())
-            .chain([model.to_string(), "--system-prompt".into(), sys_arg, "--no-session-persistence".into()])
+            // no MCP servers or slash commands of the user's own: they were loaded into every call (~200k tokens each)
+            .chain([model.to_string(), "--system-prompt".into(), sys_arg, "--no-session-persistence".into(), "--strict-mcp-config".into(), "--disable-slash-commands".into()])
             .collect();
         let argv: Vec<String> = std::iter::once(self.exe.clone()).chain(argv).collect();
         let env: HashMap<String, String> = std::env::vars().filter(|(k, _)| k != "ANTHROPIC_API_KEY").collect();

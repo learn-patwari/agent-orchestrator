@@ -455,6 +455,16 @@ fn cli_system_prompt_gets_the_tool_rules_and_tool_descriptions() {
 }
 
 #[test]
+fn cli_ignores_the_users_own_mcp_servers_and_commands_so_each_call_stays_small() {
+    // with the user's own setup loaded, one 10 KB call was billed ~218,000 tokens (measured); without it ~4,000
+    let (r, calls) = fake("x", 0, "", false);
+    run(&cli(r), &[user("hello")], None).unwrap();
+    let a = calls.lock().unwrap()[0].0.clone();
+    assert!(a.contains(&"--strict-mcp-config".to_string()), "{a:?}");
+    assert!(a.contains(&"--disable-slash-commands".to_string()), "{a:?}");
+}
+
+#[test]
 fn cli_long_system_prompt_goes_on_stdin_so_the_command_line_stays_under_the_windows_limit() {
     // Windows refuses a command line over ~32k characters (os error 206, "filename too long")
     let big = "rule. ".repeat(10_000);
