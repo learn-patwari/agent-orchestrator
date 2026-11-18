@@ -94,6 +94,13 @@ pub fn make_runner(st: &AppState, role: &Role, ws: &Path, feature_id: Option<&st
     Ok(Runner::new(provider, mapping["model"].as_str().unwrap_or(""), role.clone(), tb).skills(reg).limits(Profiles.limits()?).provider_id(rec["id"].as_str().unwrap_or("")).gate(gate).preload(preload))
 }
 
+/// The folder the human gave this feature (not the Settings fallback), when it exists.
+fn own_folder(fid: &str) -> Option<std::path::PathBuf> {
+    let f = DocRepo::new("features").ok()?.get(fid).ok()??;
+    let p = std::path::PathBuf::from(f["repo_path"].as_str()?.trim());
+    (!p.as_os_str().is_empty() && p.is_dir()).then_some(p)
+}
+
 /// Starts one agent run. Shared by `POST /api/runs` and the orchestrator's delegate tool.
 pub fn launch(st: &AppState, role_name: &str, task: &str, workspace: &str, wait: bool, feature_id: Option<&str>, task_id: Option<&str>) -> Result<Value, LaunchError> {
     if DEVELOPERS.contains(&role_name) {
@@ -107,10 +114,16 @@ pub fn launch(st: &AppState, role_name: &str, task: &str, workspace: &str, wait:
     let s = settings()?;
     let roots: Vec<String> = s["workspace_roots"].as_array().into_iter().flatten().filter_map(|p| p.as_str().map(String::from)).collect();
     let roots = if roots.is_empty() { vec![default_root().to_string_lossy().into_owned()] } else { roots };
-    let ws = match check_workspace(workspace, &roots) {
+    let mut ws = match check_workspace(workspace, &roots) {
         Ok(p) => p,
         Err(e) => return fail(400, e),
     };
+    // a feature whose human chose its own code folder works there, not in the shared workspace the orchestrator passes
+    if let Some(own) = feature_id.and_then(own_folder) {
+        if roots.iter().any(|r| std::fs::canonicalize(r).ok() == std::fs::canonicalize(&ws).ok()) {
+            ws = own;
+        }
+    }
     if let Some(pct) = budget_percent_used(s["daily_budget_usd"].as_f64(), None)? {
         if pct >= 100.0 {
             Notifier::new().send("budget_pause", "Daily LLM budget reached", &format!("Used {pct:.0}% of the daily cap; new runs are blocked."), Some("budget_pause"))?;

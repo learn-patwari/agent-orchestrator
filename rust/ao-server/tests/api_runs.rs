@@ -113,6 +113,29 @@ async fn a_held_feature_blocks_new_runs_and_resume_clears_it() {
 }
 
 #[tokio::test]
+async fn a_developer_of_a_feature_works_in_the_features_own_code_folder() {
+    let e = env();
+    let c = e.c.authed().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let pid = setup_role(c, tmp.path()).await;
+    c.put("/api/role-models/developer", json!({"provider_id": pid, "model": "m"})).await;
+    let code = tempfile::tempdir().unwrap(); // outside the workspace roots, chosen by the human on the feature
+    let (own, plain) = (approved_fid(), approved_fid());
+    assert_eq!(c.put(&format!("/api/features/{own}/setup"), json!({"repo_path": code.path().to_string_lossy()})).await.0, 200);
+    e.c.upstream.set(|_| completion("done", None));
+    // the orchestrator passes the first workspace root; a feature with its own folder moves the run there
+    for fid in [&own, &plain] {
+        let (st, out) = c.post("/api/runs", json!({"role": "developer", "task": "t", "workspace": tmp.path().to_string_lossy(), "wait": true, "feature_id": fid})).await;
+        assert_eq!(st, 200, "{out}");
+    }
+    let runs = c.get("/api/runs").await.1;
+    let ws = |fid: &str| runs.as_array().unwrap().iter().find(|r| r["feature_id"] == fid).unwrap()["workspace"].as_str().unwrap().to_string();
+    let same = |a: &str, b: &std::path::Path| std::fs::canonicalize(a).unwrap() == std::fs::canonicalize(b).unwrap();
+    assert!(same(&ws(&own), code.path()), "own folder expected, got {}", ws(&own));
+    assert!(same(&ws(&plain), tmp.path()), "no own folder: the caller's workspace stays, got {}", ws(&plain));
+}
+
+#[tokio::test]
 async fn a_feature_with_its_own_model_runs_on_it_and_others_keep_the_role_default() {
     let e = env();
     let c = e.c.authed().await;

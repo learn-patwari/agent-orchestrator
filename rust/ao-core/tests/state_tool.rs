@@ -44,6 +44,22 @@ fn state_answers_team_runs_and_reports_from_the_snapshot() {
 }
 
 #[test]
+fn state_feature_gives_a_developer_the_approved_srs_the_plan_and_the_code_folder() {
+    with_box("developer_1", |t| {
+        let f = DocRepo::new("features")
+            .unwrap()
+            .create(json!({"title": "Hello file", "status": "approved", "text": "Add hello.txt", "repo_path": "C:/code/hello", "srs_md": "# SRS\nFR-1 hello.txt contains hello", "plan": [{"phase": 1, "lanes": [{"lane": "A", "tasks": ["write hello.txt"]}]}]}), None)
+            .unwrap();
+        let out = t.call(&BOTH, "state", &json!({"action": "feature", "query": f["id"].as_str().unwrap()})).unwrap();
+        assert!(out.contains("Hello file") && out.contains("approved"), "{out}");
+        assert!(out.contains("FR-1 hello.txt contains hello"), "the SRS must be readable: {out}");
+        assert!(out.contains("write hello.txt"), "the plan must be readable: {out}");
+        assert!(out.contains("C:/code/hello"), "the code folder must be named: {out}");
+        assert!(t.call(&BOTH, "state", &json!({"action": "feature", "query": "nope"})).unwrap_err().to_string().contains("no feature"));
+    });
+}
+
+#[test]
 fn a_message_from_one_agent_reaches_the_other_through_the_next_snapshot() {
     with_box("architect", |sender| {
         let sent = sender.call(&BOTH, "tell", &json!({"to": "developer_1", "text": "schema is in docs/schema.md"})).unwrap();
