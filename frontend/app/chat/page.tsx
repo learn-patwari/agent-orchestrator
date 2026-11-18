@@ -2,8 +2,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, PageHead } from "../../components/ui";
 import { api } from "../../lib/api";
+import { stamp } from "../../lib/stamp";
 
-type Msg = { role: string; content: string };
+type Msg = { role: string; content: string; at?: number };
 type Waiting = { id: string; kind: string; title: string; body?: string };
 
 export default function Chat() {
@@ -53,7 +54,7 @@ export default function Chat() {
     setBusy(true);
     sending.current = true;
     const sent = text;
-    setMsgs((m) => [...m, { role: "user", content: sent }]);
+    setMsgs((m) => [...m, { role: "user", content: sent, at: Date.now() / 1000 }]);
     setText("");
     try {
       const scan = await api<{ looks_like_secret: boolean }>("/secrets/scan", "POST", { text: sent });
@@ -82,7 +83,7 @@ export default function Chat() {
         )}
         {msgs.map((m, i) => (
           <div key={i} className={`msg ${m.role === "user" ? "user" : "assistant"}`}>
-            <small>{m.role === "user" ? "You" : "Orchestrator"}</small>
+            <small>{m.role === "user" ? "You" : "Orchestrator"}{m.at ? <time dateTime={new Date(m.at * 1000).toISOString()}> · {stamp(m.at)}</time> : null}</small>
             {m.content}
           </div>
         ))}

@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { stamp } from "../lib/stamp";
 
-type Msg = { role: string; content: string };
+type Msg = { role: string; content: string; at?: number };
 type Session = { id: string; title: string; last_at: number; messages: number };
 
 /** A side chat with one agent. Each agent keeps its own saved sessions; the orchestrator keeps the main chat and is the only one that can start other agents. */
@@ -45,11 +46,11 @@ export default function AgentChat({ role, label, onClose }: { role: string; labe
     if (!t || busy) return;
     setBusy(true);
     setErr("");
-    setMsgs((m) => [...m, { role: "user", content: t }]);
+    setMsgs((m) => [...m, { role: "user", content: t, at: Date.now() / 1000 }]);
     setText("");
     try {
       const r = await api<{ reply: string; session_id?: string }>(boss ? "/chat" : `/agents/${role}/chat`, "POST", boss ? { text: t } : { text: t, session_id: sid || undefined });
-      setMsgs((m) => [...m, { role: "assistant", content: r.reply }]);
+      setMsgs((m) => [...m, { role: "assistant", content: r.reply, at: Date.now() / 1000 }]);
       if (r.session_id) setSid(r.session_id);
       loadSessions();
     } catch (e: any) {
@@ -80,7 +81,10 @@ export default function AgentChat({ role, label, onClose }: { role: string; labe
       <div className="agent-chat-log" role="log" aria-live="polite">
         {msgs.length === 0 && <p className="muted">{boss ? "Your main chat with the orchestrator." : `Ask ${label} about its work. This chat is only with ${label}; it cannot start other agents.`}</p>}
         {msgs.map((m, i) => (
-          <p key={i} className={m.role === "user" ? "ac-me" : "ac-them"}>{m.content}</p>
+          <p key={i} className={m.role === "user" ? "ac-me" : "ac-them"}>
+            {m.content}
+            {m.at ? <time className="ac-time" dateTime={new Date(m.at * 1000).toISOString()}>{stamp(m.at)}</time> : null}
+          </p>
         ))}
         {busy && <p className="muted" role="status">{label} is answering…</p>}
         <div ref={end} />
